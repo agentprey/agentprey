@@ -149,3 +149,9 @@ cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/
 - Default `max_concurrent` is `2`.
 - Response redaction is enabled by default. Use `--no-redact-responses` to disable.
 - Config output defaults can include both `json_out` and `html_out` under `[output]`.
+
+## Beta feedback
+
+- Bug reports: `https://github.com/agentprey/agentprey/issues/new?template=bug-report.md`
+- False-positive reports: `https://github.com/agentprey/agentprey/issues/new?template=false-positive-report.md`
+- Include command, version, and JSON/HTML artifacts when filing reports.

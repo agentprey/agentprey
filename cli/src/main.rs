@@ -5,8 +5,9 @@ use colored::Colorize;
 
 use agentprey::{
     analyzer::Verdict,
-    cli::{Cli, Commands, VectorsCommands},
+    cli::{Cli, Commands, VectorsCommands, VectorsListArgs},
     scan::ScanOutcome,
+    vectors::catalog::list_vectors,
 };
 
 #[tokio::main]
@@ -29,23 +30,44 @@ async fn main() -> ExitCode {
             }
         },
         Commands::Vectors(args) => match args.command {
-            VectorsCommands::List(list_args) => {
-                render_vectors_list_scaffold(list_args.category.as_deref());
-                ExitCode::from(0)
-            }
+            VectorsCommands::List(list_args) => match render_vectors_list(&list_args) {
+                Ok(()) => ExitCode::from(0),
+                Err(error) => {
+                    eprintln!("{} {error}", "error:".red().bold());
+                    ExitCode::from(1)
+                }
+            },
         },
     }
 }
 
-fn render_vectors_list_scaffold(category: Option<&str>) {
+fn render_vectors_list(args: &VectorsListArgs) -> anyhow::Result<()> {
+    let vectors = list_vectors(&args.vectors_dir, args.category.as_deref())?;
+
     println!();
     println!("{}", "AgentPrey Vector Catalog".bold());
-    match category {
+    println!("Directory: {}", args.vectors_dir.display());
+    match args.category.as_deref() {
         Some(category) => println!("Filter: category = {category}"),
         None => println!("Filter: none"),
     }
-    println!("No vector loader is wired yet. Day 2 scaffold is ready.");
+
+    if vectors.is_empty() {
+        println!("Vectors: 0");
+        println!();
+        return Ok(());
+    }
+
+    println!("Vectors: {}", vectors.len());
+    for vector in vectors {
+        println!(
+            "- {} | {} | {}/{}",
+            vector.id, vector.name, vector.category, vector.subcategory
+        );
+    }
+
     println!();
+    Ok(())
 }
 
 fn render_scan_outcome(outcome: &ScanOutcome) {

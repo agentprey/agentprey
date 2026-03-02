@@ -1,4 +1,5 @@
 use clap::{ArgAction, Args, Parser, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -52,4 +53,8 @@ pub struct VectorsListArgs {
     /// Optional category filter (for example: prompt-injection)
     #[arg(long)]
     pub category: Option<String>,
+
+    /// Directory containing vector YAML files
+    #[arg(long, default_value = "vectors")]
+    pub vectors_dir: PathBuf,
 }

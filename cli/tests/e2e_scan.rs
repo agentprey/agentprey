@@ -89,10 +89,10 @@ async fn marks_vulnerable_response_as_vulnerable() {
     );
 
     let args = ScanArgs {
-        target: format!("{}/chat", server.base_url),
+        target: Some(format!("{}/chat", server.base_url)),
         headers: vec![],
-        timeout_seconds: 5,
-        vectors_dir,
+        timeout_seconds: Some(5),
+        vectors_dir: Some(vectors_dir),
         category: Some("prompt-injection".to_string()),
         json_out: None,
         config: None,
@@ -112,10 +112,10 @@ async fn marks_resistant_response_as_resistant() {
     );
 
     let args = ScanArgs {
-        target: format!("{}/chat", server.base_url),
+        target: Some(format!("{}/chat", server.base_url)),
         headers: vec![],
-        timeout_seconds: 5,
-        vectors_dir,
+        timeout_seconds: Some(5),
+        vectors_dir: Some(vectors_dir),
         category: Some("prompt-injection".to_string()),
         json_out: None,
         config: None,

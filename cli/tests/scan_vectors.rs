@@ -107,10 +107,10 @@ async fn scan_uses_category_filter() {
     );
 
     let args = ScanArgs {
-        target: format!("{}/chat", server.base_url),
+        target: Some(format!("{}/chat", server.base_url)),
         headers: vec![],
-        timeout_seconds: 5,
-        vectors_dir,
+        timeout_seconds: Some(5),
+        vectors_dir: Some(vectors_dir),
         category: Some("prompt-injection".to_string()),
         json_out: None,
         config: None,
@@ -130,10 +130,10 @@ async fn scan_runs_all_categories_when_unfiltered() {
     );
 
     let args = ScanArgs {
-        target: format!("{}/chat", server.base_url),
+        target: Some(format!("{}/chat", server.base_url)),
         headers: vec![],
-        timeout_seconds: 5,
-        vectors_dir,
+        timeout_seconds: Some(5),
+        vectors_dir: Some(vectors_dir),
         category: None,
         json_out: None,
         config: None,

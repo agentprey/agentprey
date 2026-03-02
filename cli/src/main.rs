@@ -7,7 +7,7 @@ use agentprey::{
     cli::{Cli, Commands, VectorsCommands, VectorsListArgs},
     config::write_default_config,
     output::json::write_scan_json,
-    scan::{FindingStatus, ScanOutcome},
+    scan::{resolve_scan_settings, run_scan_with_settings, FindingStatus, ScanOutcome},
     vectors::catalog::list_vectors,
 };
 
@@ -26,27 +26,33 @@ async fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
-        Commands::Scan(args) => match agentprey::scan::run_scan(&args).await {
-            Ok(outcome) => {
-                render_scan_outcome(&outcome);
+        Commands::Scan(args) => match resolve_scan_settings(&args) {
+            Ok(settings) => match run_scan_with_settings(&settings).await {
+                Ok(outcome) => {
+                    render_scan_outcome(&outcome);
 
-                if let Some(path) = args.json_out.as_deref() {
-                    if let Err(error) = write_scan_json(path, &outcome) {
-                        eprintln!("{} {error}", "error:".red().bold());
-                        return ExitCode::from(1);
+                    if let Some(path) = settings.json_out.as_deref() {
+                        if let Err(error) = write_scan_json(path, &outcome) {
+                            eprintln!("{} {error}", "error:".red().bold());
+                            return ExitCode::from(1);
+                        }
+
+                        println!("JSON Output: {}", path.display());
                     }
 
-                    println!("JSON Output: {}", path.display());
+                    if outcome.has_vulnerabilities() {
+                        ExitCode::from(2)
+                    } else if outcome.error_count > 0 {
+                        ExitCode::from(1)
+                    } else {
+                        ExitCode::from(0)
+                    }
                 }
-
-                if outcome.has_vulnerabilities() {
-                    ExitCode::from(2)
-                } else if outcome.error_count > 0 {
+                Err(error) => {
+                    eprintln!("{} {error}", "error:".red().bold());
                     ExitCode::from(1)
-                } else {
-                    ExitCode::from(0)
                 }
-            }
+            },
             Err(error) => {
                 eprintln!("{} {error}", "error:".red().bold());
                 ExitCode::from(1)

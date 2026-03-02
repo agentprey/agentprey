@@ -39,19 +39,19 @@ pub struct InitArgs {
 pub struct ScanArgs {
     /// Target HTTP endpoint URL
     #[arg(long)]
-    pub target: String,
+    pub target: Option<String>,
 
     /// Additional request header in the form: "Key: Value"
     #[arg(long = "header", value_name = "KEY: VALUE", action = ArgAction::Append)]
     pub headers: Vec<String>,
 
     /// Request timeout in seconds
-    #[arg(long, default_value_t = 30)]
-    pub timeout_seconds: u64,
+    #[arg(long)]
+    pub timeout_seconds: Option<u64>,
 
     /// Directory containing vector YAML files
-    #[arg(long, default_value = "vectors")]
-    pub vectors_dir: PathBuf,
+    #[arg(long)]
+    pub vectors_dir: Option<PathBuf>,
 
     /// Optional category filter (for example: prompt-injection)
     #[arg(long)]

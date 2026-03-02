@@ -4,9 +4,8 @@ use clap::Parser;
 use colored::Colorize;
 
 use agentprey::{
-    analyzer::Verdict,
     cli::{Cli, Commands, VectorsCommands, VectorsListArgs},
-    scan::ScanOutcome,
+    scan::{FindingStatus, ScanOutcome},
     vectors::catalog::list_vectors,
 };
 
@@ -19,9 +18,12 @@ async fn main() -> ExitCode {
             Ok(outcome) => {
                 render_scan_outcome(&outcome);
 
-                match outcome.analysis.verdict {
-                    Verdict::Resistant => ExitCode::from(0),
-                    Verdict::Vulnerable => ExitCode::from(2),
+                if outcome.has_vulnerabilities() {
+                    ExitCode::from(2)
+                } else if outcome.error_count > 0 {
+                    ExitCode::from(1)
+                } else {
+                    ExitCode::from(0)
                 }
             }
             Err(error) => {
@@ -74,28 +76,43 @@ fn render_scan_outcome(outcome: &ScanOutcome) {
     println!();
     println!("{}", "AgentPrey Scan Result".bold());
     println!("Target: {}", outcome.target);
-    println!("Vector: {} ({})", outcome.vector_name, outcome.vector_id);
-    println!("HTTP Status: {}", outcome.status_code);
+    println!("Total Vectors: {}", outcome.total_vectors);
+    println!("Vulnerable: {}", outcome.vulnerable_count);
+    println!("Resistant: {}", outcome.resistant_count);
+    println!("Errors: {}", outcome.error_count);
 
-    let verdict = match outcome.analysis.verdict {
-        Verdict::Resistant => "RESISTANT".green().bold(),
-        Verdict::Vulnerable => "VULNERABLE".red().bold(),
-    };
-    println!("Verdict: {}", verdict);
-    println!("Confidence: {:.2}", outcome.analysis.confidence);
-    println!("Refusal Detected: {}", outcome.analysis.refusal_detected);
+    for finding in &outcome.findings {
+        let status = match finding.status {
+            FindingStatus::Vulnerable => "VULNERABLE".red().bold(),
+            FindingStatus::Resistant => "RESISTANT".green().bold(),
+            FindingStatus::Error => "ERROR".yellow().bold(),
+        };
 
-    if outcome.analysis.indicator_hits.is_empty() {
-        println!("Indicators: none");
-    } else {
-        println!("Indicators: {}", outcome.analysis.indicator_hits.join("; "));
+        println!(
+            "- {} | {} | {} | {}",
+            finding.vector_id, finding.vector_name, finding.severity, status
+        );
+
+        if let Some(status_code) = finding.status_code {
+            println!("  HTTP Status: {status_code}");
+        }
+
+        if let Some(analysis) = finding.analysis.as_ref() {
+            println!("  Confidence: {:.2}", analysis.confidence);
+            if analysis.indicator_hits.is_empty() {
+                println!("  Indicators: none");
+            } else {
+                println!("  Indicators: {}", analysis.indicator_hits.join("; "));
+            }
+        }
+
+        println!(
+            "  Response Excerpt: {}",
+            truncate_for_display(&finding.response, 180)
+        );
     }
 
     println!("Duration: {} ms", outcome.duration_ms);
-    println!(
-        "Response Excerpt: {}",
-        truncate_for_display(&outcome.response, 220)
-    );
     println!();
 }
 

@@ -34,6 +34,14 @@ pub struct ScanArgs {
     /// Request timeout in seconds
     #[arg(long, default_value_t = 30)]
     pub timeout_seconds: u64,
+
+    /// Directory containing vector YAML files
+    #[arg(long, default_value = "vectors")]
+    pub vectors_dir: PathBuf,
+
+    /// Optional category filter (for example: prompt-injection)
+    #[arg(long)]
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, Args)]

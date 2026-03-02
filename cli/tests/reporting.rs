@@ -1,11 +1,6 @@
 use std::{fs, thread, time::Duration};
 
-use agentprey::{
-    cli::ScanArgs,
-    output::html::write_scan_html,
-    scan::run_scan,
-    scorer::Grade,
-};
+use agentprey::{cli::ScanArgs, output::html::write_scan_html, scan::run_scan, scorer::Grade};
 use tempfile::tempdir;
 use tiny_http::{Header, Response, Server};
 
@@ -105,7 +100,9 @@ async fn error_heavy_scans_do_not_grade_high() {
         config: None,
     };
 
-    let outcome = run_scan(&args).await.expect("scan should complete with findings");
+    let outcome = run_scan(&args)
+        .await
+        .expect("scan should complete with findings");
     assert_eq!(outcome.error_count, 2);
     assert!(matches!(outcome.score.grade, Grade::D | Grade::F));
     assert!(outcome.score.score <= 84);

@@ -182,6 +182,7 @@ async fn uses_config_endpoint_and_redacts_json_output() {
 
     let config_temp = tempdir().expect("tempdir should be created");
     let config_path = config_temp.path().join(".agentprey.toml");
+    let endpoint = format!("{}/chat", server.base_url);
     fs::write(
         &config_path,
         format!(
@@ -196,7 +197,7 @@ redact_responses = true
 max_concurrent = 2
 rate_limit_rps = 20
 "#,
-            endpoint = format!("{}/chat", server.base_url),
+            endpoint = endpoint,
             vectors_dir = vectors_dir.display(),
         ),
     )

@@ -61,6 +61,10 @@ pub struct ScanArgs {
     #[arg(long)]
     pub json_out: Option<PathBuf>,
 
+    /// Optional path for writing scan HTML output
+    #[arg(long)]
+    pub html_out: Option<PathBuf>,
+
     /// Optional path to project config TOML
     #[arg(long)]
     pub config: Option<PathBuf>,

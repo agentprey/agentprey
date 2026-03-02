@@ -39,6 +39,7 @@ pub struct ScanConfig {
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct OutputConfig {
     pub json_out: Option<PathBuf>,
+    pub html_out: Option<PathBuf>,
 }
 
 pub fn load_project_config(path: &PathBuf) -> Result<ProjectConfig> {
@@ -91,6 +92,7 @@ redact_responses = true
 [output]
 # Optional default output artifact path
 # json_out = "./scan.json"
+# html_out = "./scan.html"
 "#;
 
 #[cfg(test)]
@@ -125,6 +127,7 @@ redact_responses = true
 
 [output]
 json_out = "./scan.json"
+html_out = "./scan.html"
 "#,
         )
         .expect("config fixture should be written");
@@ -151,6 +154,14 @@ json_out = "./scan.json"
                 .as_ref()
                 .map(|path| path.to_string_lossy()),
             Some("./scan.json".into())
+        );
+        assert_eq!(
+            parsed
+                .output
+                .html_out
+                .as_ref()
+                .map(|path| path.to_string_lossy()),
+            Some("./scan.html".into())
         );
     }
 

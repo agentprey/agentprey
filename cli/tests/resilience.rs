@@ -109,6 +109,7 @@ async fn retries_transient_status_and_recovers() {
         vectors_dir: Some(vectors_dir),
         category: Some("prompt-injection".to_string()),
         json_out: None,
+        html_out: None,
         config: None,
     };
 
@@ -153,6 +154,7 @@ async fn applies_rate_limit_to_request_starts() {
         vectors_dir: Some(vectors_dir),
         category: Some("prompt-injection".to_string()),
         json_out: None,
+        html_out: None,
         config: None,
     };
 
@@ -213,6 +215,7 @@ rate_limit_rps = 20
         vectors_dir: None,
         category: None,
         json_out: None,
+        html_out: None,
         config: Some(config_path),
     };
 

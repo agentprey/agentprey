@@ -101,6 +101,7 @@ async fn marks_vulnerable_response_as_vulnerable() {
         vectors_dir: Some(vectors_dir),
         category: Some("prompt-injection".to_string()),
         json_out: None,
+        html_out: None,
         config: None,
     };
 
@@ -130,6 +131,7 @@ async fn marks_resistant_response_as_resistant() {
         vectors_dir: Some(vectors_dir),
         category: Some("prompt-injection".to_string()),
         json_out: None,
+        html_out: None,
         config: None,
     };
 

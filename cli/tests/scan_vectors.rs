@@ -119,6 +119,7 @@ async fn scan_uses_category_filter() {
         vectors_dir: Some(vectors_dir),
         category: Some("prompt-injection".to_string()),
         json_out: None,
+        html_out: None,
         config: None,
     };
 
@@ -148,6 +149,7 @@ async fn scan_runs_all_categories_when_unfiltered() {
         vectors_dir: Some(vectors_dir),
         category: None,
         json_out: None,
+        html_out: None,
         config: None,
     };
 

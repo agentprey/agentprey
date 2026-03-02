@@ -78,6 +78,7 @@ pub struct ResolvedScanSettings {
     pub vectors_dir: PathBuf,
     pub category: Option<String>,
     pub json_out: Option<PathBuf>,
+    pub html_out: Option<PathBuf>,
 }
 
 impl ScanOutcome {
@@ -160,6 +161,11 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
         .clone()
         .or_else(|| config.as_ref().and_then(|cfg| cfg.output.json_out.clone()));
 
+    let html_out = args
+        .html_out
+        .clone()
+        .or_else(|| config.as_ref().and_then(|cfg| cfg.output.html_out.clone()));
+
     Ok(ResolvedScanSettings {
         target,
         headers,
@@ -172,6 +178,7 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
         vectors_dir,
         category,
         json_out,
+        html_out,
     })
 }
 
@@ -442,6 +449,7 @@ category = "prompt-injection"
 
 [output]
 json_out = "./from-config.json"
+html_out = "./from-config.html"
 "#,
         )
         .expect("config fixture should be written");
@@ -459,6 +467,7 @@ json_out = "./from-config.json"
             vectors_dir: None,
             category: None,
             json_out: None,
+            html_out: None,
             config: Some(config_path),
         };
 
@@ -477,6 +486,13 @@ json_out = "./from-config.json"
                 .as_ref()
                 .map(|path| path.to_string_lossy()),
             Some("./from-config.json".into())
+        );
+        assert_eq!(
+            resolved
+                .html_out
+                .as_ref()
+                .map(|path| path.to_string_lossy()),
+            Some("./from-config.html".into())
         );
         assert_eq!(resolved.headers, vec!["Authorization: Bearer config-token"]);
     }
@@ -503,6 +519,7 @@ endpoint = "http://config-target"
 
 [output]
 json_out = "./from-config.json"
+html_out = "./from-config.html"
 "#,
         )
         .expect("config fixture should be written");
@@ -520,6 +537,7 @@ json_out = "./from-config.json"
             vectors_dir: Some(temp.path().join("custom-vectors")),
             category: Some("custom-category".to_string()),
             json_out: Some(temp.path().join("cli-output.json")),
+            html_out: Some(temp.path().join("cli-output.html")),
             config: Some(config_path),
         };
 
@@ -538,5 +556,10 @@ json_out = "./from-config.json"
             .as_ref()
             .expect("json path should exist")
             .ends_with("cli-output.json"));
+        assert!(resolved
+            .html_out
+            .as_ref()
+            .expect("html path should exist")
+            .ends_with("cli-output.html"));
     }
 }

@@ -6,6 +6,7 @@ use colored::Colorize;
 use agentprey::{
     cli::{Cli, Commands, VectorsCommands, VectorsListArgs},
     config::write_default_config,
+    output::html::write_scan_html,
     output::json::write_scan_json,
     scan::{resolve_scan_settings, run_scan_with_settings, FindingStatus, ScanOutcome},
     vectors::catalog::list_vectors,
@@ -38,6 +39,15 @@ async fn main() -> ExitCode {
                         }
 
                         println!("JSON Output: {}", path.display());
+                    }
+
+                    if let Some(path) = settings.html_out.as_deref() {
+                        if let Err(error) = write_scan_html(path, &outcome) {
+                            eprintln!("{} {error}", "error:".red().bold());
+                            return ExitCode::from(1);
+                        }
+
+                        println!("HTML Output: {}", path.display());
                     }
 
                     if outcome.has_vulnerabilities() {

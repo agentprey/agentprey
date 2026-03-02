@@ -48,17 +48,29 @@ jobs:
       - name: Package archive (Unix)
         if: runner.os != 'Windows'
         run: |
-          mkdir -p dist
-          cp "cli/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" dist/
-          tar -C dist -czf "agentprey-${{ matrix.target }}.${{ matrix.archive_ext }}" "${{ matrix.binary_name }}"
+          package_dir="dist/agentprey-${{ matrix.target }}"
+          mkdir -p "$package_dir/scripts"
+          cp "cli/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "$package_dir/${{ matrix.binary_name }}"
+          cp -R vectors "$package_dir/vectors"
+          cp README.md "$package_dir/README.md"
+          cp CHANGELOG.md "$package_dir/CHANGELOG.md"
+          cp scripts/mock_agent.py "$package_dir/scripts/mock_agent.py"
+          cp scripts/beta_smoke.sh "$package_dir/scripts/beta_smoke.sh"
+          tar -C dist -czf "agentprey-${{ matrix.target }}.${{ matrix.archive_ext }}" "agentprey-${{ matrix.target }}"
 
       - name: Package archive (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path dist -Force | Out-Null
-          Copy-Item "cli/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "dist/${{ matrix.binary_name }}"
-          Compress-Archive -Path "dist/${{ matrix.binary_name }}" -DestinationPath "agentprey-${{ matrix.target }}.${{ matrix.archive_ext }}" -Force
+          $packageDir = "dist/agentprey-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path "$packageDir/scripts" -Force | Out-Null
+          Copy-Item "cli/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "$packageDir/${{ matrix.binary_name }}"
+          Copy-Item "vectors" "$packageDir/vectors" -Recurse
+          Copy-Item "README.md" "$packageDir/README.md"
+          Copy-Item "CHANGELOG.md" "$packageDir/CHANGELOG.md"
+          Copy-Item "scripts/mock_agent.py" "$packageDir/scripts/mock_agent.py"
+          Copy-Item "scripts/beta_smoke.sh" "$packageDir/scripts/beta_smoke.sh"
+          Compress-Archive -Path "$packageDir" -DestinationPath "agentprey-${{ matrix.target }}.${{ matrix.archive_ext }}" -Force
 
       - name: Upload packaged binary
         uses: actions/upload-artifact@v4

@@ -17,6 +17,7 @@ use crate::{
     cli::ScanArgs,
     config::{load_project_config, ProjectConfig},
     http_target,
+    redaction::redact_text,
     scorer::{score_findings, ScoreSummary},
     vectors::{loader::load_vectors_from_dir, model::Severity},
 };
@@ -27,6 +28,7 @@ const DEFAULT_RETRIES: u32 = 2;
 const DEFAULT_RETRY_BACKOFF_MS: u64 = 250;
 const DEFAULT_MAX_CONCURRENT: usize = 2;
 const DEFAULT_RATE_LIMIT_RPS: u32 = 10;
+const DEFAULT_REDACT_RESPONSES: bool = true;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ScanOutcome {
@@ -72,6 +74,7 @@ pub struct ResolvedScanSettings {
     pub retry_backoff_ms: u64,
     pub max_concurrent: usize,
     pub rate_limit_rps: u32,
+    pub redact_responses: bool,
     pub vectors_dir: PathBuf,
     pub category: Option<String>,
     pub json_out: Option<PathBuf>,
@@ -129,6 +132,18 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
         .unwrap_or(DEFAULT_RATE_LIMIT_RPS)
         .max(1);
 
+    let redact_override = if args.redact_responses {
+        Some(true)
+    } else if args.no_redact_responses {
+        Some(false)
+    } else {
+        None
+    };
+
+    let redact_responses = redact_override
+        .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.redact_responses))
+        .unwrap_or(DEFAULT_REDACT_RESPONSES);
+
     let vectors_dir = args
         .vectors_dir
         .clone()
@@ -153,6 +168,7 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
         retry_backoff_ms,
         max_concurrent,
         rate_limit_rps,
+        redact_responses,
         vectors_dir,
         category,
         json_out,
@@ -200,6 +216,7 @@ pub async fn run_scan_with_settings(settings: &ResolvedScanSettings) -> Result<S
             retries: settings.retries,
             retry_backoff_ms: settings.retry_backoff_ms,
         };
+        let redact_responses = settings.redact_responses;
 
         let semaphore = semaphore.clone();
         let limiter = limiter.clone();
@@ -212,7 +229,7 @@ pub async fn run_scan_with_settings(settings: &ResolvedScanSettings) -> Result<S
             let _permit = permit;
 
             limiter.wait_turn().await;
-            execute_vector_scan(vector, &target, &headers, request_policy).await
+            execute_vector_scan(vector, &target, &headers, request_policy, redact_responses).await
         });
         tasks.push(task);
     }
@@ -271,6 +288,7 @@ async fn execute_vector_scan(
     target: &str,
     headers: &[String],
     request_policy: http_target::RequestPolicy,
+    redact_responses: bool,
 ) -> FindingOutcome {
     let vector_started = Instant::now();
 
@@ -313,7 +331,7 @@ async fn execute_vector_scan(
                 payload_prompt: payload.prompt,
                 status,
                 status_code: Some(exchange.status),
-                response: exchange.extracted_response,
+                response: maybe_redact(&exchange.extracted_response, redact_responses),
                 analysis: Some(analysis),
                 duration_ms: vector_started.elapsed().as_millis(),
             }
@@ -328,10 +346,18 @@ async fn execute_vector_scan(
             payload_prompt: payload.prompt,
             status: FindingStatus::Error,
             status_code: None,
-            response: error.to_string(),
+            response: maybe_redact(&error.to_string(), redact_responses),
             analysis: None,
             duration_ms: vector_started.elapsed().as_millis(),
         },
+    }
+}
+
+fn maybe_redact(input: &str, enabled: bool) -> String {
+    if enabled {
+        redact_text(input)
+    } else {
+        input.to_string()
     }
 }
 
@@ -428,6 +454,8 @@ json_out = "./from-config.json"
             retry_backoff_ms: None,
             max_concurrent: None,
             rate_limit_rps: None,
+            redact_responses: false,
+            no_redact_responses: false,
             vectors_dir: None,
             category: None,
             json_out: None,
@@ -441,6 +469,7 @@ json_out = "./from-config.json"
         assert_eq!(resolved.retry_backoff_ms, 300);
         assert_eq!(resolved.max_concurrent, 2);
         assert_eq!(resolved.rate_limit_rps, 10);
+        assert!(resolved.redact_responses);
         assert_eq!(resolved.category.as_deref(), Some("prompt-injection"));
         assert_eq!(
             resolved
@@ -468,6 +497,7 @@ endpoint = "http://config-target"
             retry_backoff_ms = 999
             max_concurrent = 6
             rate_limit_rps = 50
+            redact_responses = true
             vectors_dir = "vectors"
             category = "prompt-injection"
 
@@ -485,6 +515,8 @@ json_out = "./from-config.json"
             retry_backoff_ms: Some(50),
             max_concurrent: Some(3),
             rate_limit_rps: Some(12),
+            redact_responses: false,
+            no_redact_responses: true,
             vectors_dir: Some(temp.path().join("custom-vectors")),
             category: Some("custom-category".to_string()),
             json_out: Some(temp.path().join("cli-output.json")),
@@ -498,6 +530,7 @@ json_out = "./from-config.json"
         assert_eq!(resolved.retry_backoff_ms, 50);
         assert_eq!(resolved.max_concurrent, 3);
         assert_eq!(resolved.rate_limit_rps, 12);
+        assert!(!resolved.redact_responses);
         assert_eq!(resolved.headers, vec!["Authorization: Bearer cli-token"]);
         assert_eq!(resolved.category.as_deref(), Some("custom-category"));
         assert!(resolved

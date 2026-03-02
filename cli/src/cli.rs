@@ -80,6 +80,14 @@ pub struct ScanArgs {
     /// Global request rate limit in requests per second
     #[arg(long)]
     pub rate_limit_rps: Option<u32>,
+
+    /// Redact sensitive patterns from response output
+    #[arg(long, default_value_t = false, conflicts_with = "no_redact_responses")]
+    pub redact_responses: bool,
+
+    /// Disable response redaction in output artifacts
+    #[arg(long, default_value_t = false, conflicts_with = "redact_responses")]
+    pub no_redact_responses: bool,
 }
 
 #[derive(Debug, Clone, Args)]

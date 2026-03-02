@@ -5,6 +5,7 @@ use colored::Colorize;
 
 use agentprey::{
     cli::{Cli, Commands, VectorsCommands, VectorsListArgs},
+    output::json::write_scan_json,
     scan::{FindingStatus, ScanOutcome},
     vectors::catalog::list_vectors,
 };
@@ -17,6 +18,15 @@ async fn main() -> ExitCode {
         Commands::Scan(args) => match agentprey::scan::run_scan(&args).await {
             Ok(outcome) => {
                 render_scan_outcome(&outcome);
+
+                if let Some(path) = args.json_out.as_deref() {
+                    if let Err(error) = write_scan_json(path, &outcome) {
+                        eprintln!("{} {error}", "error:".red().bold());
+                        return ExitCode::from(1);
+                    }
+
+                    println!("JSON Output: {}", path.display());
+                }
 
                 if outcome.has_vulnerabilities() {
                     ExitCode::from(2)

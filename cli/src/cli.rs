@@ -42,6 +42,10 @@ pub struct ScanArgs {
     /// Optional category filter (for example: prompt-injection)
     #[arg(long)]
     pub category: Option<String>,
+
+    /// Optional path for writing scan JSON output
+    #[arg(long)]
+    pub json_out: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Args)]

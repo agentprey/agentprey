@@ -94,6 +94,7 @@ async fn marks_vulnerable_response_as_vulnerable() {
         timeout_seconds: 5,
         vectors_dir,
         category: Some("prompt-injection".to_string()),
+        json_out: None,
     };
 
     let outcome = run_scan(&args).await.expect("scan should succeed");
@@ -115,6 +116,7 @@ async fn marks_resistant_response_as_resistant() {
         timeout_seconds: 5,
         vectors_dir,
         category: Some("prompt-injection".to_string()),
+        json_out: None,
     };
 
     let outcome = run_scan(&args).await.expect("scan should succeed");

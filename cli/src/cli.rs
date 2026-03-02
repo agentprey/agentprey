@@ -15,6 +15,9 @@ pub struct Cli {
 pub enum Commands {
     /// Run a security scan against a target endpoint
     Scan(ScanArgs),
+
+    /// Inspect available attack vectors
+    Vectors(VectorsArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -30,4 +33,23 @@ pub struct ScanArgs {
     /// Request timeout in seconds
     #[arg(long, default_value_t = 30)]
     pub timeout_seconds: u64,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct VectorsArgs {
+    #[command(subcommand)]
+    pub command: VectorsCommands,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum VectorsCommands {
+    /// List available vectors
+    List(VectorsListArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct VectorsListArgs {
+    /// Optional category filter (for example: prompt-injection)
+    #[arg(long)]
+    pub category: Option<String>,
 }

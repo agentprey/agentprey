@@ -5,7 +5,7 @@ use colored::Colorize;
 
 use agentprey::{
     analyzer::Verdict,
-    cli::{Cli, Commands},
+    cli::{Cli, Commands, VectorsCommands},
     scan::ScanOutcome,
 };
 
@@ -28,7 +28,24 @@ async fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
+        Commands::Vectors(args) => match args.command {
+            VectorsCommands::List(list_args) => {
+                render_vectors_list_scaffold(list_args.category.as_deref());
+                ExitCode::from(0)
+            }
+        },
     }
+}
+
+fn render_vectors_list_scaffold(category: Option<&str>) {
+    println!();
+    println!("{}", "AgentPrey Vector Catalog".bold());
+    match category {
+        Some(category) => println!("Filter: category = {category}"),
+        None => println!("Filter: none"),
+    }
+    println!("No vector loader is wired yet. Day 2 scaffold is ready.");
+    println!();
 }
 
 fn render_scan_outcome(outcome: &ScanOutcome) {

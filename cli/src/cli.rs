@@ -72,6 +72,14 @@ pub struct ScanArgs {
     /// Base backoff in milliseconds between retries
     #[arg(long)]
     pub retry_backoff_ms: Option<u64>,
+
+    /// Maximum number of vectors to execute concurrently
+    #[arg(long)]
+    pub max_concurrent: Option<usize>,
+
+    /// Global request rate limit in requests per second
+    #[arg(long)]
+    pub rate_limit_rps: Option<u32>,
 }
 
 #[derive(Debug, Clone, Args)]

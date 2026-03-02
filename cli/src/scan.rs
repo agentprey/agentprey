@@ -1,7 +1,16 @@
-use std::{path::PathBuf, time::Instant};
+use std::{
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
+use tokio::{
+    sync::{Mutex, Semaphore},
+    task::JoinHandle,
+    time::Instant as TokioInstant,
+};
 
 use crate::{
     analyzer::{analyze_response_for_vector, Analysis, Verdict},
@@ -16,6 +25,8 @@ const DEFAULT_TIMEOUT_SECONDS: u64 = 30;
 const DEFAULT_VECTORS_DIR: &str = "vectors";
 const DEFAULT_RETRIES: u32 = 2;
 const DEFAULT_RETRY_BACKOFF_MS: u64 = 250;
+const DEFAULT_MAX_CONCURRENT: usize = 2;
+const DEFAULT_RATE_LIMIT_RPS: u32 = 10;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ScanOutcome {
@@ -59,6 +70,8 @@ pub struct ResolvedScanSettings {
     pub timeout_seconds: u64,
     pub retries: u32,
     pub retry_backoff_ms: u64,
+    pub max_concurrent: usize,
+    pub rate_limit_rps: u32,
     pub vectors_dir: PathBuf,
     pub category: Option<String>,
     pub json_out: Option<PathBuf>,
@@ -104,6 +117,18 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
         .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.retry_backoff_ms))
         .unwrap_or(DEFAULT_RETRY_BACKOFF_MS);
 
+    let max_concurrent = args
+        .max_concurrent
+        .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.max_concurrent))
+        .unwrap_or(DEFAULT_MAX_CONCURRENT)
+        .max(1);
+
+    let rate_limit_rps = args
+        .rate_limit_rps
+        .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.rate_limit_rps))
+        .unwrap_or(DEFAULT_RATE_LIMIT_RPS)
+        .max(1);
+
     let vectors_dir = args
         .vectors_dir
         .clone()
@@ -126,6 +151,8 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
         timeout_seconds,
         retries,
         retry_backoff_ms,
+        max_concurrent,
+        rate_limit_rps,
         vectors_dir,
         category,
         json_out,
@@ -160,78 +187,67 @@ pub async fn run_scan_with_settings(settings: &ResolvedScanSettings) -> Result<S
 
     vectors.sort_by(|left, right| left.vector.id.cmp(&right.vector.id));
 
-    let mut findings = Vec::with_capacity(vectors.len());
+    let semaphore = Arc::new(Semaphore::new(settings.max_concurrent));
+    let limiter = Arc::new(RequestRateLimiter::new(settings.rate_limit_rps));
+
+    let mut tasks: Vec<JoinHandle<FindingOutcome>> = Vec::with_capacity(vectors.len());
+    for loaded in vectors {
+        let vector = loaded.vector;
+        let target = settings.target.clone();
+        let headers = settings.headers.clone();
+        let request_policy = http_target::RequestPolicy {
+            timeout_seconds: settings.timeout_seconds,
+            retries: settings.retries,
+            retry_backoff_ms: settings.retry_backoff_ms,
+        };
+
+        let semaphore = semaphore.clone();
+        let limiter = limiter.clone();
+
+        let task = tokio::spawn(async move {
+            let permit = semaphore
+                .acquire_owned()
+                .await
+                .expect("semaphore should stay open during scan");
+            let _permit = permit;
+
+            limiter.wait_turn().await;
+            execute_vector_scan(vector, &target, &headers, request_policy).await
+        });
+        tasks.push(task);
+    }
+
+    let mut findings = Vec::with_capacity(tasks.len());
+    for task in tasks {
+        match task.await {
+            Ok(finding) => findings.push(finding),
+            Err(error) => findings.push(FindingOutcome {
+                vector_id: "internal-runtime".to_string(),
+                vector_name: "Task Join Error".to_string(),
+                category: "internal".to_string(),
+                subcategory: "runtime".to_string(),
+                severity: Severity::Info,
+                payload_name: "n/a".to_string(),
+                payload_prompt: "n/a".to_string(),
+                status: FindingStatus::Error,
+                status_code: None,
+                response: format!("task join failure: {error}"),
+                analysis: None,
+                duration_ms: 0,
+            }),
+        }
+    }
+
+    findings.sort_by(|left, right| left.vector_id.cmp(&right.vector_id));
+
     let mut vulnerable_count = 0usize;
     let mut resistant_count = 0usize;
     let mut error_count = 0usize;
-
-    for loaded in vectors {
-        let vector = loaded.vector;
-        let payload = vector
-            .payloads
-            .first()
-            .cloned()
-            .ok_or_else(|| anyhow!("vector '{}' is missing payloads", vector.id))?;
-
-        let vector_started = Instant::now();
-        match http_target::send_payload(
-            &settings.target,
-            &payload.prompt,
-            &settings.headers,
-            http_target::RequestPolicy {
-                timeout_seconds: settings.timeout_seconds,
-                retries: settings.retries,
-                retry_backoff_ms: settings.retry_backoff_ms,
-            },
-        )
-        .await
-        {
-            Ok(exchange) => {
-                let analysis =
-                    analyze_response_for_vector(&exchange.extracted_response, &vector.detection);
-                let status = match analysis.verdict {
-                    Verdict::Vulnerable => {
-                        vulnerable_count += 1;
-                        FindingStatus::Vulnerable
-                    }
-                    Verdict::Resistant => {
-                        resistant_count += 1;
-                        FindingStatus::Resistant
-                    }
-                };
-
-                findings.push(FindingOutcome {
-                    vector_id: vector.id,
-                    vector_name: vector.name,
-                    category: vector.category,
-                    subcategory: vector.subcategory,
-                    severity: vector.severity,
-                    payload_name: payload.name,
-                    payload_prompt: payload.prompt,
-                    status,
-                    status_code: Some(exchange.status),
-                    response: exchange.extracted_response,
-                    analysis: Some(analysis),
-                    duration_ms: vector_started.elapsed().as_millis(),
-                });
-            }
-            Err(error) => {
-                error_count += 1;
-                findings.push(FindingOutcome {
-                    vector_id: vector.id,
-                    vector_name: vector.name,
-                    category: vector.category,
-                    subcategory: vector.subcategory,
-                    severity: vector.severity,
-                    payload_name: payload.name,
-                    payload_prompt: payload.prompt,
-                    status: FindingStatus::Error,
-                    status_code: None,
-                    response: error.to_string(),
-                    analysis: None,
-                    duration_ms: vector_started.elapsed().as_millis(),
-                });
-            }
+    for finding in &findings {
+        match finding.status {
+            FindingStatus::Vulnerable => vulnerable_count += 1,
+            FindingStatus::Resistant => resistant_count += 1,
+            FindingStatus::Error => error_count += 1,
         }
     }
 
@@ -248,6 +264,101 @@ pub async fn run_scan_with_settings(settings: &ResolvedScanSettings) -> Result<S
         findings,
         duration_ms,
     })
+}
+
+async fn execute_vector_scan(
+    vector: crate::vectors::model::Vector,
+    target: &str,
+    headers: &[String],
+    request_policy: http_target::RequestPolicy,
+) -> FindingOutcome {
+    let vector_started = Instant::now();
+
+    let payload = match vector.payloads.first().cloned() {
+        Some(payload) => payload,
+        None => {
+            return FindingOutcome {
+                vector_id: vector.id,
+                vector_name: vector.name,
+                category: vector.category,
+                subcategory: vector.subcategory,
+                severity: vector.severity,
+                payload_name: "missing".to_string(),
+                payload_prompt: "missing".to_string(),
+                status: FindingStatus::Error,
+                status_code: None,
+                response: "vector payload list is empty".to_string(),
+                analysis: None,
+                duration_ms: vector_started.elapsed().as_millis(),
+            };
+        }
+    };
+
+    match http_target::send_payload(target, &payload.prompt, headers, request_policy).await {
+        Ok(exchange) => {
+            let analysis =
+                analyze_response_for_vector(&exchange.extracted_response, &vector.detection);
+            let status = match analysis.verdict {
+                Verdict::Vulnerable => FindingStatus::Vulnerable,
+                Verdict::Resistant => FindingStatus::Resistant,
+            };
+
+            FindingOutcome {
+                vector_id: vector.id,
+                vector_name: vector.name,
+                category: vector.category,
+                subcategory: vector.subcategory,
+                severity: vector.severity,
+                payload_name: payload.name,
+                payload_prompt: payload.prompt,
+                status,
+                status_code: Some(exchange.status),
+                response: exchange.extracted_response,
+                analysis: Some(analysis),
+                duration_ms: vector_started.elapsed().as_millis(),
+            }
+        }
+        Err(error) => FindingOutcome {
+            vector_id: vector.id,
+            vector_name: vector.name,
+            category: vector.category,
+            subcategory: vector.subcategory,
+            severity: vector.severity,
+            payload_name: payload.name,
+            payload_prompt: payload.prompt,
+            status: FindingStatus::Error,
+            status_code: None,
+            response: error.to_string(),
+            analysis: None,
+            duration_ms: vector_started.elapsed().as_millis(),
+        },
+    }
+}
+
+#[derive(Debug)]
+struct RequestRateLimiter {
+    min_interval: Duration,
+    next_allowed: Mutex<TokioInstant>,
+}
+
+impl RequestRateLimiter {
+    fn new(rate_limit_rps: u32) -> Self {
+        let min_interval = Duration::from_secs_f64(1.0 / f64::from(rate_limit_rps));
+        Self {
+            min_interval,
+            next_allowed: Mutex::new(TokioInstant::now()),
+        }
+    }
+
+    async fn wait_turn(&self) {
+        let mut next_allowed = self.next_allowed.lock().await;
+        let now = TokioInstant::now();
+        if *next_allowed > now {
+            tokio::time::sleep(*next_allowed - now).await;
+        }
+
+        *next_allowed = TokioInstant::now() + self.min_interval;
+    }
 }
 
 fn load_config_for_scan(args: &ScanArgs) -> Result<Option<ProjectConfig>> {
@@ -315,6 +426,8 @@ json_out = "./from-config.json"
             timeout_seconds: None,
             retries: None,
             retry_backoff_ms: None,
+            max_concurrent: None,
+            rate_limit_rps: None,
             vectors_dir: None,
             category: None,
             json_out: None,
@@ -326,6 +439,8 @@ json_out = "./from-config.json"
         assert_eq!(resolved.timeout_seconds, 22);
         assert_eq!(resolved.retries, 2);
         assert_eq!(resolved.retry_backoff_ms, 300);
+        assert_eq!(resolved.max_concurrent, 2);
+        assert_eq!(resolved.rate_limit_rps, 10);
         assert_eq!(resolved.category.as_deref(), Some("prompt-injection"));
         assert_eq!(
             resolved
@@ -351,6 +466,8 @@ endpoint = "http://config-target"
             timeout_seconds = 55
             retries = 9
             retry_backoff_ms = 999
+            max_concurrent = 6
+            rate_limit_rps = 50
             vectors_dir = "vectors"
             category = "prompt-injection"
 
@@ -366,6 +483,8 @@ json_out = "./from-config.json"
             timeout_seconds: Some(7),
             retries: Some(1),
             retry_backoff_ms: Some(50),
+            max_concurrent: Some(3),
+            rate_limit_rps: Some(12),
             vectors_dir: Some(temp.path().join("custom-vectors")),
             category: Some("custom-category".to_string()),
             json_out: Some(temp.path().join("cli-output.json")),
@@ -377,6 +496,8 @@ json_out = "./from-config.json"
         assert_eq!(resolved.timeout_seconds, 7);
         assert_eq!(resolved.retries, 1);
         assert_eq!(resolved.retry_backoff_ms, 50);
+        assert_eq!(resolved.max_concurrent, 3);
+        assert_eq!(resolved.rate_limit_rps, 12);
         assert_eq!(resolved.headers, vec!["Authorization: Bearer cli-token"]);
         assert_eq!(resolved.category.as_deref(), Some("custom-category"));
         assert!(resolved

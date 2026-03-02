@@ -16,7 +16,43 @@ This repository currently contains the Day 5 vertical slice:
 - Response redaction defaults to on
 - Meaningful exit codes
 
-## Quickstart
+## Beta install and verify (15 minutes)
+
+Option A: use a beta release binary.
+
+```bash
+# 1) download and extract a release archive from:
+# https://github.com/agentprey/agentprey/releases
+
+# 2) run from the extracted directory
+./agentprey --help
+./agentprey init
+```
+
+Option B: build from source.
+
+```bash
+git clone https://github.com/agentprey/agentprey.git
+cd agentprey
+cargo build --manifest-path cli/Cargo.toml --release
+./cli/target/release/agentprey --help
+```
+
+Verification steps:
+
+```bash
+# fast baseline check
+bash scripts/beta_smoke.sh
+
+# manual run with artifacts
+./cli/target/release/agentprey scan \
+  --target http://127.0.0.1:8787/chat \
+  --category prompt-injection \
+  --json-out ./scan.json \
+  --html-out ./scan.html
+```
+
+## Quickstart (repo workflow)
 
 Start a local mock target:
 

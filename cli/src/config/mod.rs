@@ -1,6 +1,10 @@
-use std::{collections::BTreeMap, fs, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -45,13 +49,57 @@ pub fn load_project_config(path: &PathBuf) -> Result<ProjectConfig> {
         .with_context(|| format!("failed to parse TOML config '{}'", path.display()))
 }
 
+pub fn write_default_config(path: &Path, force: bool) -> Result<()> {
+    if path.exists() && !force {
+        return Err(anyhow!(
+            "config file '{}' already exists (use --force to overwrite)",
+            path.display()
+        ));
+    }
+
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create config directory '{}'", parent.display())
+            })?;
+        }
+    }
+
+    fs::write(path, DEFAULT_CONFIG_TEMPLATE)
+        .with_context(|| format!("failed to write config file '{}'", path.display()))?;
+
+    Ok(())
+}
+
+pub const DEFAULT_CONFIG_TEMPLATE: &str = r#"[target]
+# Required for config-driven scans
+endpoint = "http://127.0.0.1:8787/chat"
+
+# Optional headers to send with every request
+headers = { }
+
+[scan]
+vectors_dir = "vectors"
+category = "prompt-injection"
+timeout_seconds = 30
+retries = 2
+retry_backoff_ms = 250
+max_concurrent = 2
+rate_limit_rps = 10
+redact_responses = true
+
+[output]
+# Optional default output artifact path
+# json_out = "./scan.json"
+"#;
+
 #[cfg(test)]
 mod tests {
     use std::fs;
 
     use tempfile::tempdir;
 
-    use crate::config::load_project_config;
+    use crate::config::{load_project_config, write_default_config, DEFAULT_CONFIG_TEMPLATE};
 
     #[test]
     fn parses_valid_project_config() {
@@ -115,5 +163,26 @@ json_out = "./scan.json"
         let error = load_project_config(&config_path).expect_err("config parsing should fail");
         let message = error.to_string();
         assert!(message.contains("failed to parse TOML config"));
+    }
+
+    #[test]
+    fn writes_default_config_file() {
+        let temp = tempdir().expect("tempdir should be created");
+        let config_path = temp.path().join(".agentprey.toml");
+
+        write_default_config(&config_path, false).expect("default config should be written");
+
+        let contents = fs::read_to_string(&config_path).expect("config file should exist");
+        assert_eq!(contents, DEFAULT_CONFIG_TEMPLATE);
+    }
+
+    #[test]
+    fn refuses_overwrite_without_force() {
+        let temp = tempdir().expect("tempdir should be created");
+        let config_path = temp.path().join(".agentprey.toml");
+
+        fs::write(&config_path, "[target]\nendpoint = 'one'").expect("fixture should exist");
+        let error = write_default_config(&config_path, false).expect_err("should fail");
+        assert!(error.to_string().contains("already exists"));
     }
 }

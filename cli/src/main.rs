@@ -5,6 +5,7 @@ use colored::Colorize;
 
 use agentprey::{
     cli::{Cli, Commands, VectorsCommands, VectorsListArgs},
+    config::write_default_config,
     output::json::write_scan_json,
     scan::{FindingStatus, ScanOutcome},
     vectors::catalog::list_vectors,
@@ -15,6 +16,16 @@ async fn main() -> ExitCode {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Init(args) => match write_default_config(&args.path, args.force) {
+            Ok(()) => {
+                println!("Wrote config: {}", args.path.display());
+                ExitCode::from(0)
+            }
+            Err(error) => {
+                eprintln!("{} {error}", "error:".red().bold());
+                ExitCode::from(1)
+            }
+        },
         Commands::Scan(args) => match agentprey::scan::run_scan(&args).await {
             Ok(outcome) => {
                 render_scan_outcome(&outcome);

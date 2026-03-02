@@ -14,11 +14,25 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
+    /// Initialize a default project config file
+    Init(InitArgs),
+
     /// Run a security scan against a target endpoint
     Scan(ScanArgs),
 
     /// Inspect available attack vectors
     Vectors(VectorsArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct InitArgs {
+    /// Path to write the generated config file
+    #[arg(long, default_value = ".agentprey.toml")]
+    pub path: PathBuf,
+
+    /// Overwrite an existing config file
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[derive(Debug, Clone, Args)]

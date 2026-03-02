@@ -77,6 +77,8 @@ fn render_scan_outcome(outcome: &ScanOutcome) {
     println!("{}", "AgentPrey Scan Result".bold());
     println!("Target: {}", outcome.target);
     println!("Total Vectors: {}", outcome.total_vectors);
+    println!("Score: {}", outcome.score.score);
+    println!("Grade: {}", outcome.score.grade);
     println!("Vulnerable: {}", outcome.vulnerable_count);
     println!("Resistant: {}", outcome.resistant_count);
     println!("Errors: {}", outcome.error_count);

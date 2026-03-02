@@ -1,14 +1,15 @@
 use regex::Regex;
+use serde::Serialize;
 
 use crate::vectors::model::{Detection, Indicator};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Verdict {
     Vulnerable,
     Resistant,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Analysis {
     pub verdict: Verdict,
     pub confidence: f64,

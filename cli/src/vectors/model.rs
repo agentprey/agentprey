@@ -1,7 +1,7 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Vector {
     pub id: String,
     pub name: String,
@@ -21,7 +21,7 @@ pub struct Vector {
     pub owasp_mapping: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Critical,
@@ -49,27 +49,27 @@ impl fmt::Display for Severity {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Tier {
     Free,
     Pro,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Payload {
     pub name: String,
     pub prompt: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Detection {
     #[serde(default)]
     pub indicators: Vec<Indicator>,
     pub threshold: f64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Indicator {
     #[serde(rename = "type")]
     pub indicator_type: String,
@@ -80,7 +80,7 @@ pub struct Indicator {
     pub weight: f64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Remediation {
     pub summary: String,
     #[serde(default)]

@@ -1,26 +1,29 @@
 use std::time::Instant;
 
 use anyhow::{anyhow, Context, Result};
+use serde::Serialize;
 
 use crate::{
     analyzer::{analyze_response_for_vector, Analysis, Verdict},
     cli::ScanArgs,
     http_target,
+    scorer::{score_findings, ScoreSummary},
     vectors::{loader::load_vectors_from_dir, model::Severity},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ScanOutcome {
     pub target: String,
     pub total_vectors: usize,
     pub vulnerable_count: usize,
     pub resistant_count: usize,
     pub error_count: usize,
+    pub score: ScoreSummary,
     pub findings: Vec<FindingOutcome>,
     pub duration_ms: u128,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FindingOutcome {
     pub vector_id: String,
     pub vector_name: String,
@@ -36,7 +39,7 @@ pub struct FindingOutcome {
     pub duration_ms: u128,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum FindingStatus {
     Vulnerable,
     Resistant,
@@ -144,6 +147,7 @@ pub async fn run_scan(args: &ScanArgs) -> Result<ScanOutcome> {
     }
 
     let duration_ms = started_at.elapsed().as_millis();
+    let score = score_findings(&findings);
 
     Ok(ScanOutcome {
         target: args.target.clone(),
@@ -151,6 +155,7 @@ pub async fn run_scan(args: &ScanArgs) -> Result<ScanOutcome> {
         vulnerable_count,
         resistant_count,
         error_count,
+        score,
         findings,
         duration_ms,
     })

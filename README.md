@@ -2,7 +2,7 @@
 
 `agentprey` is a developer-first security scanner for AI agents.
 
-This repository currently contains the Day 4 vertical slice:
+This repository currently contains the Day 5 vertical slice:
 
 - Rust CLI with `scan` and `vectors list` commands
 - Project config initialization via `init`
@@ -11,6 +11,7 @@ This repository currently contains the Day 4 vertical slice:
 - Category filtering for vector listing and scans
 - Per-vector terminal output with confidence and indicator matches
 - JSON artifact output via `--json-out`
+- HTML artifact output via `--html-out`
 - Retry/backoff, rate limiting, and bounded concurrency controls
 - Response redaction defaults to on
 - Meaningful exit codes
@@ -53,6 +54,12 @@ Write JSON output for CI or scripting:
 cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/chat --category prompt-injection --json-out ./scan.json
 ```
 
+Write HTML output for sharing reports:
+
+```bash
+cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/chat --category prompt-injection --html-out ./scan.html
+```
+
 Tune resilience controls from CLI flags:
 
 ```bash
@@ -72,6 +79,23 @@ python3 scripts/mock_agent.py --mode resistant --port 8787
 cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/chat --category prompt-injection
 ```
 
+## Calibration sanity check
+
+- Vulnerable mock should produce mostly or fully vulnerable findings.
+- Resistant mock should stay resistant with near-zero false positives.
+
+You can run both checks quickly:
+
+```bash
+# vulnerable baseline
+python3 scripts/mock_agent.py --mode vulnerable --port 8787
+cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/chat --category prompt-injection
+
+# resistant baseline
+python3 scripts/mock_agent.py --mode resistant --port 8787
+cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/chat --category prompt-injection
+```
+
 ## Exit codes
 
 - `0`: no vulnerabilities found
@@ -82,9 +106,10 @@ cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/
 
 - HTTP target only
 - Single-turn payload execution (first payload per vector)
-- Prompt-injection vectors only (10 vectors)
+- Prompt-injection vectors only (20 vectors)
 
 ## Notes
 
 - Default `max_concurrent` is `2`.
 - Response redaction is enabled by default. Use `--no-redact-responses` to disable.
+- Config output defaults can include both `json_out` and `html_out` under `[output]`.

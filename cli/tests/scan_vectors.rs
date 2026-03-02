@@ -113,6 +113,7 @@ async fn scan_uses_category_filter() {
         vectors_dir,
         category: Some("prompt-injection".to_string()),
         json_out: None,
+        config: None,
     };
 
     let outcome = run_scan(&args).await.expect("scan should succeed");
@@ -135,6 +136,7 @@ async fn scan_runs_all_categories_when_unfiltered() {
         vectors_dir,
         category: None,
         json_out: None,
+        config: None,
     };
 
     let outcome = run_scan(&args).await.expect("scan should succeed");

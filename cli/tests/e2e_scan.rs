@@ -95,6 +95,7 @@ async fn marks_vulnerable_response_as_vulnerable() {
         vectors_dir,
         category: Some("prompt-injection".to_string()),
         json_out: None,
+        config: None,
     };
 
     let outcome = run_scan(&args).await.expect("scan should succeed");
@@ -117,6 +118,7 @@ async fn marks_resistant_response_as_resistant() {
         vectors_dir,
         category: Some("prompt-injection".to_string()),
         json_out: None,
+        config: None,
     };
 
     let outcome = run_scan(&args).await.expect("scan should succeed");

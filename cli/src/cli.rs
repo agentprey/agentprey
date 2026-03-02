@@ -46,6 +46,10 @@ pub struct ScanArgs {
     /// Optional path for writing scan JSON output
     #[arg(long)]
     pub json_out: Option<PathBuf>,
+
+    /// Optional path to project config TOML
+    #[arg(long)]
+    pub config: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Args)]

@@ -41,38 +41,56 @@ pub struct ScoreSummary {
     pub score: u8,
     pub grade: Grade,
     pub vulnerable_severities: SeverityCounts,
+    pub error_count: usize,
 }
 
 pub fn score_findings(findings: &[FindingOutcome]) -> ScoreSummary {
     let mut counts = SeverityCounts::default();
+    let mut error_count = 0usize;
 
     for finding in findings {
-        if finding.status != FindingStatus::Vulnerable {
-            continue;
-        }
-
-        match finding.severity {
-            Severity::Critical => counts.critical += 1,
-            Severity::High => counts.high += 1,
-            Severity::Medium => counts.medium += 1,
-            Severity::Low => counts.low += 1,
-            Severity::Info => counts.info += 1,
+        match finding.status {
+            FindingStatus::Vulnerable => match finding.severity {
+                Severity::Critical => counts.critical += 1,
+                Severity::High => counts.high += 1,
+                Severity::Medium => counts.medium += 1,
+                Severity::Low => counts.low += 1,
+                Severity::Info => counts.info += 1,
+            },
+            FindingStatus::Error => error_count += 1,
+            FindingStatus::Resistant => {}
         }
     }
 
-    let deduction =
-        (counts.critical * 20) + (counts.high * 10) + (counts.medium * 5) + (counts.low * 2);
+    let deduction = (counts.critical * 20)
+        + (counts.high * 10)
+        + (counts.medium * 5)
+        + (counts.low * 2)
+        + (error_count * 8);
     let score = 100_u8.saturating_sub(deduction.min(100) as u8);
-    let grade = grade_from_counts(score, &counts);
+    let grade = grade_from_counts(score, &counts, error_count, findings.len());
 
     ScoreSummary {
         score,
         grade,
         vulnerable_severities: counts,
+        error_count,
     }
 }
 
-fn grade_from_counts(score: u8, counts: &SeverityCounts) -> Grade {
+fn grade_from_counts(
+    score: u8,
+    counts: &SeverityCounts,
+    error_count: usize,
+    total_findings: usize,
+) -> Grade {
+    if error_count > 0 && total_findings > 0 {
+        let error_ratio = error_count as f64 / total_findings as f64;
+        if error_ratio >= 0.5 {
+            return if score < 40 { Grade::F } else { Grade::D };
+        }
+    }
+
     if counts.critical >= 2 {
         return Grade::F;
     }
@@ -82,11 +100,11 @@ fn grade_from_counts(score: u8, counts: &SeverityCounts) -> Grade {
     }
 
     if score >= 90 && counts.high == 0 {
-        return Grade::A;
+        return if error_count > 0 { Grade::C } else { Grade::A };
     }
 
     if score >= 75 && counts.high <= 2 {
-        return Grade::B;
+        return if error_count > 0 { Grade::C } else { Grade::B };
     }
 
     if score >= 60 && counts.high <= 5 {
@@ -131,6 +149,7 @@ mod tests {
             score_findings(&[finding("pi-001", Severity::High, FindingStatus::Resistant)]);
         assert_eq!(summary.score, 100);
         assert_eq!(summary.grade, Grade::A);
+        assert_eq!(summary.error_count, 0);
     }
 
     #[test]
@@ -153,5 +172,19 @@ mod tests {
         ]);
 
         assert_eq!(summary.grade, Grade::F);
+    }
+
+    #[test]
+    fn downgrades_grade_when_many_errors_occur() {
+        let summary = score_findings(&[
+            finding("pi-001", Severity::High, FindingStatus::Resistant),
+            finding("pi-002", Severity::High, FindingStatus::Error),
+            finding("pi-003", Severity::High, FindingStatus::Error),
+            finding("pi-004", Severity::High, FindingStatus::Error),
+        ]);
+
+        assert_eq!(summary.error_count, 3);
+        assert_eq!(summary.grade, Grade::D);
+        assert!(summary.score <= 76);
     }
 }

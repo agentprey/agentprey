@@ -84,6 +84,7 @@ mod tests {
                     low: 0,
                     info: 0,
                 },
+                error_count: 0,
             },
             findings: vec![FindingOutcome {
                 vector_id: "pi-direct-001".to_string(),

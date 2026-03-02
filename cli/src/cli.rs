@@ -64,6 +64,14 @@ pub struct ScanArgs {
     /// Optional path to project config TOML
     #[arg(long)]
     pub config: Option<PathBuf>,
+
+    /// Number of retry attempts for transient request failures
+    #[arg(long)]
+    pub retries: Option<u32>,
+
+    /// Base backoff in milliseconds between retries
+    #[arg(long)]
+    pub retry_backoff_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Args)]

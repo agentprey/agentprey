@@ -3,6 +3,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE, USER_AGENT};
 use serde_json::{json, Value};
+use tokio::time::sleep;
 
 #[derive(Debug, Clone)]
 pub struct HttpExchange {
@@ -11,7 +12,47 @@ pub struct HttpExchange {
     pub extracted_response: String,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct RequestPolicy {
+    pub timeout_seconds: u64,
+    pub retries: u32,
+    pub retry_backoff_ms: u64,
+}
+
 pub async fn send_payload(
+    target: &str,
+    payload: &str,
+    raw_headers: &[String],
+    policy: RequestPolicy,
+) -> Result<HttpExchange> {
+    let max_attempts = policy.retries.saturating_add(1);
+    for attempt in 1..=max_attempts {
+        match send_payload_once(target, payload, raw_headers, policy.timeout_seconds).await {
+            Ok(exchange) => {
+                if should_retry_status(exchange.status) && attempt < max_attempts {
+                    sleep(backoff_duration(policy.retry_backoff_ms, attempt)).await;
+                    continue;
+                }
+
+                return Ok(exchange);
+            }
+            Err(error) => {
+                if attempt < max_attempts {
+                    sleep(backoff_duration(policy.retry_backoff_ms, attempt)).await;
+                    continue;
+                }
+
+                return Err(
+                    error.context(format!("request failed after {max_attempts} attempt(s)"))
+                );
+            }
+        }
+    }
+
+    Err(anyhow!("request loop exited unexpectedly"))
+}
+
+async fn send_payload_once(
     target: &str,
     payload: &str,
     raw_headers: &[String],
@@ -53,6 +94,16 @@ pub async fn send_payload(
         raw_body,
         extracted_response,
     })
+}
+
+fn should_retry_status(status: u16) -> bool {
+    matches!(status, 429 | 502 | 503 | 504)
+}
+
+fn backoff_duration(base_ms: u64, attempt: u32) -> Duration {
+    let base = base_ms.max(1);
+    let factor = 2_u64.saturating_pow(attempt.saturating_sub(1));
+    Duration::from_millis(base.saturating_mul(factor).min(30_000))
 }
 
 fn build_headers(raw_headers: &[String]) -> Result<HeaderMap> {
@@ -138,5 +189,20 @@ fn first_string(value: &Value) -> Option<String> {
             map.values().find_map(first_string)
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use crate::http_target::backoff_duration;
+
+    #[test]
+    fn computes_exponential_backoff_with_cap() {
+        assert_eq!(backoff_duration(250, 1), Duration::from_millis(250));
+        assert_eq!(backoff_duration(250, 2), Duration::from_millis(500));
+        assert_eq!(backoff_duration(250, 3), Duration::from_millis(1000));
+        assert_eq!(backoff_duration(20_000, 3), Duration::from_millis(30_000));
     }
 }

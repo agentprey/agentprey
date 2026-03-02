@@ -14,6 +14,8 @@ use crate::{
 
 const DEFAULT_TIMEOUT_SECONDS: u64 = 30;
 const DEFAULT_VECTORS_DIR: &str = "vectors";
+const DEFAULT_RETRIES: u32 = 2;
+const DEFAULT_RETRY_BACKOFF_MS: u64 = 250;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ScanOutcome {
@@ -55,6 +57,8 @@ pub struct ResolvedScanSettings {
     pub target: String,
     pub headers: Vec<String>,
     pub timeout_seconds: u64,
+    pub retries: u32,
+    pub retry_backoff_ms: u64,
     pub vectors_dir: PathBuf,
     pub category: Option<String>,
     pub json_out: Option<PathBuf>,
@@ -90,6 +94,16 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
         .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.timeout_seconds))
         .unwrap_or(DEFAULT_TIMEOUT_SECONDS);
 
+    let retries = args
+        .retries
+        .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.retries))
+        .unwrap_or(DEFAULT_RETRIES);
+
+    let retry_backoff_ms = args
+        .retry_backoff_ms
+        .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.retry_backoff_ms))
+        .unwrap_or(DEFAULT_RETRY_BACKOFF_MS);
+
     let vectors_dir = args
         .vectors_dir
         .clone()
@@ -110,6 +124,8 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
         target,
         headers,
         timeout_seconds,
+        retries,
+        retry_backoff_ms,
         vectors_dir,
         category,
         json_out,
@@ -162,7 +178,11 @@ pub async fn run_scan_with_settings(settings: &ResolvedScanSettings) -> Result<S
             &settings.target,
             &payload.prompt,
             &settings.headers,
-            settings.timeout_seconds,
+            http_target::RequestPolicy {
+                timeout_seconds: settings.timeout_seconds,
+                retries: settings.retries,
+                retry_backoff_ms: settings.retry_backoff_ms,
+            },
         )
         .await
         {
@@ -278,6 +298,8 @@ headers = { Authorization = "Bearer config-token" }
 
 [scan]
 timeout_seconds = 22
+retries = 2
+retry_backoff_ms = 300
 vectors_dir = "vectors"
 category = "prompt-injection"
 
@@ -291,6 +313,8 @@ json_out = "./from-config.json"
             target: None,
             headers: vec![],
             timeout_seconds: None,
+            retries: None,
+            retry_backoff_ms: None,
             vectors_dir: None,
             category: None,
             json_out: None,
@@ -300,6 +324,8 @@ json_out = "./from-config.json"
         let resolved = resolve_scan_settings(&args).expect("settings should resolve");
         assert_eq!(resolved.target, "http://127.0.0.1:8787/chat");
         assert_eq!(resolved.timeout_seconds, 22);
+        assert_eq!(resolved.retries, 2);
+        assert_eq!(resolved.retry_backoff_ms, 300);
         assert_eq!(resolved.category.as_deref(), Some("prompt-injection"));
         assert_eq!(
             resolved
@@ -322,9 +348,11 @@ json_out = "./from-config.json"
 endpoint = "http://config-target"
 
 [scan]
-timeout_seconds = 55
-vectors_dir = "vectors"
-category = "prompt-injection"
+            timeout_seconds = 55
+            retries = 9
+            retry_backoff_ms = 999
+            vectors_dir = "vectors"
+            category = "prompt-injection"
 
 [output]
 json_out = "./from-config.json"
@@ -336,6 +364,8 @@ json_out = "./from-config.json"
             target: Some("http://cli-target".to_string()),
             headers: vec!["Authorization: Bearer cli-token".to_string()],
             timeout_seconds: Some(7),
+            retries: Some(1),
+            retry_backoff_ms: Some(50),
             vectors_dir: Some(temp.path().join("custom-vectors")),
             category: Some("custom-category".to_string()),
             json_out: Some(temp.path().join("cli-output.json")),
@@ -345,6 +375,8 @@ json_out = "./from-config.json"
         let resolved = resolve_scan_settings(&args).expect("settings should resolve");
         assert_eq!(resolved.target, "http://cli-target");
         assert_eq!(resolved.timeout_seconds, 7);
+        assert_eq!(resolved.retries, 1);
+        assert_eq!(resolved.retry_backoff_ms, 50);
         assert_eq!(resolved.headers, vec!["Authorization: Bearer cli-token"]);
         assert_eq!(resolved.category.as_deref(), Some("custom-category"));
         assert!(resolved

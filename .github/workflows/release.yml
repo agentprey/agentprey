@@ -87,5 +87,5 @@ jobs:
         with:
           files: agentprey-${{ matrix.target }}.${{ matrix.archive_ext }}
           tag_name: ${{ github.ref_name }}
-          prerelease: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: false

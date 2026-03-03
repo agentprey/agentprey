@@ -15,7 +15,7 @@ pub fn sync_pro_vectors() -> Result<usize> {
 }
 
 fn sync_pro_vectors_to_path(destination: &Path) -> Result<usize> {
-    fs::create_dir_all(&destination).with_context(|| {
+    fs::create_dir_all(destination).with_context(|| {
         format!(
             "failed to create Pro vectors directory '{}'",
             destination.display()
@@ -52,7 +52,7 @@ mod tests {
     fn succeeds_when_directory_already_exists() {
         let temp = tempdir().expect("tempdir should be created");
         let destination = temp.path().join("vectors/pro");
-        fs::create_dir_all(&destination).expect("fixture directory should exist");
+        fs::create_dir_all(destination.as_path()).expect("fixture directory should exist");
 
         let synced = sync_pro_vectors_to_path(&destination).expect("sync should succeed");
         assert_eq!(synced, 0);

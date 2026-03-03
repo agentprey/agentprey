@@ -8,6 +8,12 @@
 cargo install agentprey
 ```
 
+## Update
+
+```bash
+cargo install agentprey --locked --force
+```
+
 ## Quickstart
 
 ```bash

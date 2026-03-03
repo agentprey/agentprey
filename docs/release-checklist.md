@@ -23,6 +23,19 @@ Use this checklist before publishing any beta tag.
 
 ## Publish
 
-- [ ] Tag release candidate (`v0.1.0-beta.x`)
-- [ ] Create prerelease with notes and artifact links
+- [ ] Tag release candidate (`v0.1.0-beta.x`) or stable (`v0.1.0`)
+- [ ] Confirm prerelease behavior (`v*` with `-` publishes prerelease, stable tags publish full release)
+- [ ] Create release notes and artifact links
 - [ ] Open beta feedback issue and pin it in repository
+
+## Crates.io Rollout
+
+- [ ] Bump version in `cli/Cargo.toml` and update `CHANGELOG.md`
+- [ ] Run `Publish Crate` workflow with `dry_run=true`
+- [ ] Re-run `Publish Crate` workflow with `dry_run=false` after approval
+- [ ] Verify published metadata with `cargo info agentprey`
+
+## User Upgrade Path
+
+- [ ] Add update command to release notes: `cargo install agentprey --locked --force`
+- [ ] Add pinned version command for rollback guidance: `cargo install agentprey --locked --version <version> --force`

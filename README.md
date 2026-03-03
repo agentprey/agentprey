@@ -39,6 +39,18 @@ agentprey --help
 agentprey init
 ```
 
+Update an existing crates.io install:
+
+```bash
+cargo install agentprey --locked --force
+```
+
+Install a specific version (for rollback or pinning):
+
+```bash
+cargo install agentprey --locked --version <version> --force
+```
+
 Option C: build from source.
 
 ```bash

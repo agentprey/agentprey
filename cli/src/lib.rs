@@ -1,4 +1,5 @@
 pub mod analyzer;
+pub mod auth;
 pub mod cli;
 pub mod config;
 pub mod http_target;

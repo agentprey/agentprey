@@ -6,6 +6,8 @@ This repository currently contains the Day 5 vertical slice:
 
 - Rust CLI with `scan` and `vectors list` commands
 - Project config initialization via `init`
+- Local auth scaffolding via `auth activate`, `auth status`, and `auth refresh`
+- Pro vector sync scaffold via `vectors sync --pro`
 - HTTP endpoint testing with YAML-defined prompt-injection vectors
 - Config + CLI merged scan settings (CLI overrides config)
 - Category filtering for vector listing and scans
@@ -78,6 +80,10 @@ Generate a default project config:
 
 ```bash
 cargo run --manifest-path cli/Cargo.toml -- init
+cargo run --manifest-path cli/Cargo.toml -- auth activate --key apy_example_key
+cargo run --manifest-path cli/Cargo.toml -- auth status
+cargo run --manifest-path cli/Cargo.toml -- auth refresh
+cargo run --manifest-path cli/Cargo.toml -- vectors sync --pro
 ```
 
 Run the scanner:

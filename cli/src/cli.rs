@@ -17,6 +17,9 @@ pub enum Commands {
     /// Initialize a default project config file
     Init(InitArgs),
 
+    /// Configure local authentication credentials
+    Auth(AuthArgs),
+
     /// Run a security scan against a target endpoint
     Scan(ScanArgs),
 
@@ -95,6 +98,31 @@ pub struct ScanArgs {
 }
 
 #[derive(Debug, Clone, Args)]
+pub struct AuthArgs {
+    #[command(subcommand)]
+    pub command: AuthCommands,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum AuthCommands {
+    /// Activate local credentials with an API key
+    Activate(AuthActivateArgs),
+
+    /// Re-validate stored credentials and refresh tier metadata
+    Refresh,
+
+    /// Show the currently resolved subscription tier
+    Status,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct AuthActivateArgs {
+    /// API key to store locally; if omitted, prompts interactively
+    #[arg(long)]
+    pub key: Option<String>,
+}
+
+#[derive(Debug, Clone, Args)]
 pub struct VectorsArgs {
     #[command(subcommand)]
     pub command: VectorsCommands,
@@ -104,6 +132,9 @@ pub struct VectorsArgs {
 pub enum VectorsCommands {
     /// List available vectors
     List(VectorsListArgs),
+
+    /// Sync vectors from remote bundles
+    Sync(VectorsSyncArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -115,4 +146,11 @@ pub struct VectorsListArgs {
     /// Directory containing vector YAML files
     #[arg(long, default_value = "vectors")]
     pub vectors_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct VectorsSyncArgs {
+    /// Sync the Pro vector bundle
+    #[arg(long, required = true)]
+    pub pro: bool,
 }

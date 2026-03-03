@@ -12,6 +12,10 @@ cargo install agentprey
 
 ```bash
 agentprey init
+agentprey auth activate --key apy_example_key
+agentprey auth status
+agentprey auth refresh
+agentprey vectors sync --pro
 agentprey vectors list --category prompt-injection
 agentprey scan --target http://127.0.0.1:8787/chat --category prompt-injection
 ```

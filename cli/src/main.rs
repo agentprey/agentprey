@@ -8,13 +8,14 @@ use clap::Parser;
 use colored::Colorize;
 
 use agentprey::{
-    cli::{Cli, Commands, VectorsCommands, VectorsListArgs},
+    auth,
+    cli::{AuthCommands, Cli, Commands, VectorsCommands, VectorsListArgs},
     config::write_default_config,
     output::html::write_scan_html,
     output::json::write_scan_json,
     scan::{resolve_scan_settings, run_scan_with_settings, FindingStatus, ScanOutcome},
     scorer::Grade,
-    vectors::{catalog::list_vectors, model::Severity},
+    vectors::{catalog::list_vectors, model::Severity, sync::sync_pro_vectors},
 };
 
 #[tokio::main]
@@ -33,6 +34,45 @@ async fn main() -> ExitCode {
                 eprintln!("{} {error}", "error:".red().bold());
                 ExitCode::from(1)
             }
+        },
+        Commands::Auth(args) => match args.command {
+            AuthCommands::Activate(activate_args) => match auth::activate(activate_args.key) {
+                Ok(path) => {
+                    println!("Auth activated");
+                    println!("Credentials: {}", path.display());
+                    ExitCode::from(0)
+                }
+                Err(error) => {
+                    eprintln!("{} {error}", "error:".red().bold());
+                    ExitCode::from(1)
+                }
+            },
+            AuthCommands::Refresh => match auth::refresh() {
+                Ok(tier) => {
+                    println!("Refreshed: tier={tier}");
+                    ExitCode::from(0)
+                }
+                Err(error) => {
+                    eprintln!("{} {error}", "error:".red().bold());
+                    ExitCode::from(1)
+                }
+            },
+            AuthCommands::Status => match auth::current_tier() {
+                Ok(Some(tier)) => {
+                    println!("Auth: activated");
+                    println!("Tier: {tier}");
+                    ExitCode::from(0)
+                }
+                Ok(None) => {
+                    println!("Auth: not activated");
+                    println!("Tier: none");
+                    ExitCode::from(0)
+                }
+                Err(error) => {
+                    eprintln!("{} {error}", "error:".red().bold());
+                    ExitCode::from(1)
+                }
+            },
         },
         Commands::Scan(args) => match resolve_scan_settings(&args) {
             Ok(settings) => match run_scan_with_settings(&settings).await {
@@ -83,6 +123,23 @@ async fn main() -> ExitCode {
                     ExitCode::from(1)
                 }
             },
+            VectorsCommands::Sync(sync_args) => {
+                if !sync_args.pro {
+                    eprintln!("{} missing required --pro flag", "error:".red().bold());
+                    return ExitCode::from(1);
+                }
+
+                match sync_pro_vectors() {
+                    Ok(count) => {
+                        println!("Pro vectors synced: {count} vectors (backend not connected)");
+                        ExitCode::from(0)
+                    }
+                    Err(error) => {
+                        eprintln!("{} {error}", "error:".red().bold());
+                        ExitCode::from(1)
+                    }
+                }
+            }
         },
     }
 }

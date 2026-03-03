@@ -1,4 +1,8 @@
-use std::process::ExitCode;
+use std::{
+    env,
+    io::{self, IsTerminal},
+    process::ExitCode,
+};
 
 use clap::Parser;
 use colored::Colorize;
@@ -9,11 +13,14 @@ use agentprey::{
     output::html::write_scan_html,
     output::json::write_scan_json,
     scan::{resolve_scan_settings, run_scan_with_settings, FindingStatus, ScanOutcome},
-    vectors::catalog::list_vectors,
+    scorer::Grade,
+    vectors::{catalog::list_vectors, model::Severity},
 };
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    configure_color_output();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -80,6 +87,13 @@ async fn main() -> ExitCode {
     }
 }
 
+fn configure_color_output() {
+    let no_color = env::var_os("NO_COLOR").is_some();
+    let is_tty = io::stdout().is_terminal() && io::stderr().is_terminal();
+
+    colored::control::set_override(!no_color && is_tty);
+}
+
 fn render_vectors_list(args: &VectorsListArgs) -> anyhow::Result<()> {
     let vectors = list_vectors(&args.vectors_dir, args.category.as_deref())?;
 
@@ -111,48 +125,132 @@ fn render_vectors_list(args: &VectorsListArgs) -> anyhow::Result<()> {
 
 fn render_scan_outcome(outcome: &ScanOutcome) {
     println!();
-    println!("{}", "AgentPrey Scan Result".bold());
-    println!("Target: {}", outcome.target);
-    println!("Total Vectors: {}", outcome.total_vectors);
-    println!("Score: {}", outcome.score.score);
-    println!("Grade: {}", outcome.score.grade);
-    println!("Vulnerable: {}", outcome.vulnerable_count);
-    println!("Resistant: {}", outcome.resistant_count);
-    println!("Errors: {}", outcome.error_count);
+    println!("{}", "AgentPrey Scan Result".white().bold());
+    println!("{} {}", "Target:".bright_black(), outcome.target);
+    println!(
+        "{} {}",
+        "Total Vectors:".bright_black(),
+        outcome.total_vectors
+    );
+    println!("{} {}", "Score:".bright_black(), outcome.score.score);
+    println!(
+        "{} {}",
+        "Grade:".white().bold(),
+        style_grade(outcome.score.grade)
+    );
+    println!(
+        "{} {}",
+        "Vulnerable:".bright_black(),
+        style_vulnerable_count(outcome.vulnerable_count)
+    );
+    println!(
+        "{} {}",
+        "Resistant:".bright_black(),
+        style_resistant_count(outcome.resistant_count)
+    );
+    println!(
+        "{} {}",
+        "Errors:".bright_black(),
+        style_error_count(outcome.error_count)
+    );
 
     for finding in &outcome.findings {
-        let status = match finding.status {
-            FindingStatus::Vulnerable => "VULNERABLE".red().bold(),
-            FindingStatus::Resistant => "RESISTANT".green().bold(),
-            FindingStatus::Error => "ERROR".yellow().bold(),
-        };
+        let status = style_status(finding.status);
+        let severity = style_severity(&finding.severity);
 
         println!(
             "- {} | {} | {} | {}",
-            finding.vector_id, finding.vector_name, finding.severity, status
+            finding.vector_id, finding.vector_name, severity, status
         );
 
         if let Some(status_code) = finding.status_code {
-            println!("  HTTP Status: {status_code}");
+            println!("{}", format!("  HTTP Status: {status_code}").bright_black());
         }
 
         if let Some(analysis) = finding.analysis.as_ref() {
-            println!("  Confidence: {:.2}", analysis.confidence);
+            println!(
+                "{}",
+                format!("  Confidence: {:.2}", analysis.confidence).bright_black()
+            );
             if analysis.indicator_hits.is_empty() {
-                println!("  Indicators: none");
+                println!("{}", "  Indicators: none".bright_black());
             } else {
-                println!("  Indicators: {}", analysis.indicator_hits.join("; "));
+                println!(
+                    "{}",
+                    format!("  Indicators: {}", analysis.indicator_hits.join("; ")).bright_black()
+                );
             }
         }
 
         println!(
-            "  Response Excerpt: {}",
-            truncate_for_display(&finding.response, 180)
+            "{}",
+            format!(
+                "  Response Excerpt: {}",
+                truncate_for_display(&finding.response, 180)
+            )
+            .bright_black()
         );
     }
 
-    println!("Duration: {} ms", outcome.duration_ms);
+    println!(
+        "{}",
+        format!("Duration: {} ms", outcome.duration_ms).bright_black()
+    );
     println!();
+}
+
+fn style_grade(grade: Grade) -> String {
+    let grade_text = grade.to_string();
+
+    match grade {
+        Grade::A | Grade::B => grade_text.green().bold().to_string(),
+        _ => grade_text.white().bold().to_string(),
+    }
+}
+
+fn style_severity(severity: &Severity) -> String {
+    match severity {
+        Severity::Critical => "CRITICAL".red().bold().to_string(),
+        Severity::Medium => "MEDIUM".yellow().to_string(),
+        Severity::Info => "INFO".bright_black().to_string(),
+        Severity::High => "HIGH".to_string(),
+        Severity::Low => "LOW".to_string(),
+    }
+}
+
+fn style_status(status: FindingStatus) -> String {
+    match status {
+        FindingStatus::Vulnerable => "VULNERABLE".red().bold().to_string(),
+        FindingStatus::Resistant => "PASSED".green().bold().to_string(),
+        FindingStatus::Error => "WARNING".yellow().bold().to_string(),
+    }
+}
+
+fn style_vulnerable_count(count: usize) -> String {
+    let text = count.to_string();
+    if count > 0 {
+        text.red().bold().to_string()
+    } else {
+        text.bright_black().to_string()
+    }
+}
+
+fn style_resistant_count(count: usize) -> String {
+    let text = count.to_string();
+    if count > 0 {
+        text.green().to_string()
+    } else {
+        text.bright_black().to_string()
+    }
+}
+
+fn style_error_count(count: usize) -> String {
+    let text = count.to_string();
+    if count > 0 {
+        text.yellow().to_string()
+    } else {
+        text.bright_black().to_string()
+    }
 }
 
 fn truncate_for_display(text: &str, max_chars: usize) -> String {

@@ -140,6 +140,55 @@ python3 scripts/mock_agent.py --mode resistant --port 8787
 cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/chat --category prompt-injection
 ```
 
+## CI/CD usage
+
+`agentprey` is CI-friendly because it returns stable exit codes:
+
+- `0` for clean scans
+- `2` for vulnerabilities detected
+- `1` for runtime/tooling errors
+
+That behavior makes it compatible with GitHub Actions and any CI system that gates builds on process exit status.
+
+Example GitHub Actions workflow:
+
+```yaml
+name: AgentPrey Scan
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install agentprey
+        run: cargo install agentprey
+
+      - name: Run scan and gate build
+        env:
+          TARGET_URL: ${{ secrets.AGENTPREY_TARGET_URL }}
+        run: |
+          set +e
+          agentprey scan --target "$TARGET_URL" --category prompt-injection
+          exit_code=$?
+          set -e
+
+          if [ "$exit_code" -eq 2 ]; then
+            echo "agentprey found vulnerabilities"
+            exit 1
+          fi
+
+          exit "$exit_code"
+```
+
 ## Exit codes
 
 - `0`: no vulnerabilities found

@@ -29,7 +29,15 @@ Option A: use a beta release binary.
 ./agentprey init
 ```
 
-Option B: build from source.
+Option B: install from crates.io.
+
+```bash
+cargo install agentprey
+agentprey --help
+agentprey init
+```
+
+Option C: build from source.
 
 ```bash
 git clone https://github.com/agentprey/agentprey.git
@@ -45,7 +53,7 @@ Verification steps:
 bash scripts/beta_smoke.sh
 
 # manual run with artifacts
-./cli/target/release/agentprey scan \
+agentprey scan \
   --target http://127.0.0.1:8787/chat \
   --category prompt-injection \
   --json-out ./scan.json \
@@ -149,6 +157,7 @@ cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/
 - Default `max_concurrent` is `2`.
 - Response redaction is enabled by default. Use `--no-redact-responses` to disable.
 - Config output defaults can include both `json_out` and `html_out` under `[output]`.
+- The crates.io package bundles free vectors, so `cargo install agentprey` works without cloning the repo.
 
 ## Beta feedback
 

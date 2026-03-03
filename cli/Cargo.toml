@@ -4,11 +4,17 @@ version = "0.1.0"
 edition = "2021"
 description = "Security testing scanner for AI agents"
 license = "MIT"
+repository = "https://github.com/agentprey/agentprey"
+homepage = "https://github.com/agentprey/agentprey"
+readme = "README.md"
+keywords = ["security", "ai", "cli", "prompt-injection", "testing"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 colored = "2"
+include_dir = "0.7"
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }

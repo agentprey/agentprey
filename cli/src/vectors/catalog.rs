@@ -2,10 +2,10 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::vectors::{loader::load_vectors_from_dir, model::Vector};
+use crate::vectors::{loader::load_vectors, model::Vector};
 
 pub fn list_vectors(root: &Path, category: Option<&str>) -> Result<Vec<Vector>> {
-    let mut vectors: Vec<Vector> = load_vectors_from_dir(root)?
+    let mut vectors: Vec<Vector> = load_vectors(root)?
         .into_iter()
         .map(|loaded| loaded.vector)
         .collect();

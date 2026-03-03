@@ -1,3 +1,4 @@
+pub mod builtin;
 pub mod catalog;
 pub mod loader;
 pub mod model;

@@ -5,12 +5,27 @@ use std::{
 
 use anyhow::{Context, Result};
 
-use crate::vectors::{model::Vector, parser::parse_vector_from_yaml, validator::validate_vector};
+use crate::vectors::{
+    builtin::load_builtin_vectors, model::Vector, parser::parse_vector_from_yaml,
+    validator::validate_vector,
+};
 
 #[derive(Debug, Clone)]
 pub struct LoadedVector {
     pub path: PathBuf,
     pub vector: Vector,
+}
+
+pub fn load_vectors(root: &Path) -> Result<Vec<LoadedVector>> {
+    if root.exists() {
+        return load_vectors_from_dir(root);
+    }
+
+    if is_default_vectors_dir(root) {
+        return load_builtin_vectors();
+    }
+
+    load_vectors_from_dir(root)
 }
 
 pub fn load_vectors_from_dir(root: &Path) -> Result<Vec<LoadedVector>> {
@@ -33,6 +48,10 @@ pub fn load_vectors_from_dir(root: &Path) -> Result<Vec<LoadedVector>> {
     }
 
     Ok(loaded)
+}
+
+fn is_default_vectors_dir(path: &Path) -> bool {
+    path == Path::new("vectors")
 }
 
 fn collect_vector_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
@@ -62,11 +81,13 @@ fn collect_vector_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use std::fs;
 
     use tempfile::tempdir;
 
-    use crate::vectors::loader::load_vectors_from_dir;
+    use crate::vectors::loader::{load_vectors, load_vectors_from_dir};
 
     #[test]
     fn loads_valid_vectors_recursively() {
@@ -132,5 +153,18 @@ detection:
         let message = error.to_string();
         assert!(message.contains("invalid vector semantics in"));
         assert!(message.contains("invalid.yaml"));
+    }
+
+    #[test]
+    fn falls_back_to_builtin_vectors_for_missing_default_dir() {
+        let current = std::env::current_dir().expect("cwd should be readable");
+        let temp = tempdir().expect("tempdir should be created");
+        std::env::set_current_dir(temp.path()).expect("should switch cwd");
+
+        let loaded = load_vectors(Path::new("vectors")).expect("builtin fallback should load");
+
+        std::env::set_current_dir(current).expect("should restore cwd");
+
+        assert!(!loaded.is_empty());
     }
 }

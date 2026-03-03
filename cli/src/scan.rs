@@ -19,7 +19,7 @@ use crate::{
     http_target,
     redaction::redact_text,
     scorer::{score_findings, ScoreSummary},
-    vectors::{loader::load_vectors_from_dir, model::Severity},
+    vectors::{loader::load_vectors, model::Severity},
 };
 
 const DEFAULT_TIMEOUT_SECONDS: u64 = 30;
@@ -190,7 +190,7 @@ pub async fn run_scan(args: &ScanArgs) -> Result<ScanOutcome> {
 pub async fn run_scan_with_settings(settings: &ResolvedScanSettings) -> Result<ScanOutcome> {
     let started_at = Instant::now();
 
-    let mut vectors = load_vectors_from_dir(&settings.vectors_dir).with_context(|| {
+    let mut vectors = load_vectors(&settings.vectors_dir).with_context(|| {
         format!(
             "failed to load vectors from '{}'",
             settings.vectors_dir.display()

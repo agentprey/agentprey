@@ -172,8 +172,8 @@ cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/
 `agentprey` is CI-friendly because it returns stable exit codes:
 
 - `0` for clean scans
-- `2` for vulnerabilities detected
-- `1` for runtime/tooling errors
+- `1` for vulnerabilities detected
+- `2` for runtime/tooling errors
 
 That behavior makes it compatible with GitHub Actions and any CI system that gates builds on process exit status.
 
@@ -208,7 +208,7 @@ jobs:
           exit_code=$?
           set -e
 
-          if [ "$exit_code" -eq 2 ]; then
+          if [ "$exit_code" -eq 1 ]; then
             echo "agentprey found vulnerabilities"
             exit 1
           fi
@@ -219,8 +219,8 @@ jobs:
 ## Exit codes
 
 - `0`: no vulnerabilities found
-- `2`: one or more vulnerabilities detected
-- `1`: runtime/tooling error
+- `1`: one or more vulnerabilities detected
+- `2`: runtime/tooling error
 
 ## Current limitations
 

@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
@@ -224,29 +225,46 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
 }
 
 fn resolve_cached_pro_vectors_dir() -> Option<PathBuf> {
+    let status = auth::status().ok()?;
+    if !status.key_configured || !tier_allows_cached_pro_vectors(status.tier.as_deref()) {
+        return None;
+    }
+
     auth::default_cached_vectors_dir().ok()
+}
+
+fn tier_allows_cached_pro_vectors(tier: Option<&str>) -> bool {
+    matches!(tier, Some(current) if current.eq_ignore_ascii_case("pro"))
 }
 
 fn load_vectors_for_scan(
     root: &Path,
     cached_pro_vectors_dir: Option<&Path>,
 ) -> Result<Vec<LoadedVector>> {
-    let mut loaded = load_vectors(root)
+    let mut loaded_by_id = BTreeMap::new();
+
+    let free_vectors = load_vectors(root)
         .with_context(|| format!("failed to load vectors from '{}'", root.display()))?;
+    for loaded in free_vectors {
+        loaded_by_id.insert(loaded.vector.id.clone(), loaded);
+    }
 
     if let Some(pro_vectors_dir) = cached_pro_vectors_dir {
         if pro_vectors_dir.exists() && pro_vectors_dir != root {
-            let mut pro_vectors = load_vectors_from_dir(pro_vectors_dir).with_context(|| {
+            let pro_vectors = load_vectors_from_dir(pro_vectors_dir).with_context(|| {
                 format!(
                     "failed to load cached Pro vectors from '{}'",
                     pro_vectors_dir.display()
                 )
             })?;
-            loaded.append(&mut pro_vectors);
+
+            for loaded in pro_vectors {
+                loaded_by_id.insert(loaded.vector.id.clone(), loaded);
+            }
         }
     }
 
-    Ok(loaded)
+    Ok(loaded_by_id.into_values().collect())
 }
 
 pub async fn run_scan(args: &ScanArgs) -> Result<ScanOutcome> {
@@ -782,5 +800,39 @@ html_out = "./from-config.html"
             ids,
             vec!["gh-pro-001".to_string(), "pi-free-001".to_string()]
         );
+    }
+
+    #[test]
+    fn deduplicates_merged_vectors_by_id_preferring_pro_copy() {
+        let temp = tempdir().expect("tempdir should be created");
+        let free_root = temp.path().join("vectors");
+        let pro_root = temp.path().join("cached-pro-vectors");
+
+        write_vector(
+            &free_root,
+            "prompt-injection/direct/shared-001.yaml",
+            "shared-001",
+            "prompt-injection",
+        );
+        write_vector(
+            &pro_root,
+            "goal-hijacking/direct/shared-001.yaml",
+            "shared-001",
+            "goal-hijacking",
+        );
+
+        let loaded =
+            load_vectors_for_scan(&free_root, Some(&pro_root)).expect("vectors should load");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].vector.id, "shared-001");
+        assert_eq!(loaded[0].vector.category, "goal-hijacking");
+    }
+
+    #[test]
+    fn only_pro_tier_loads_cached_pro_vectors() {
+        assert!(super::tier_allows_cached_pro_vectors(Some("pro")));
+        assert!(super::tier_allows_cached_pro_vectors(Some("PRO")));
+        assert!(!super::tier_allows_cached_pro_vectors(Some("free")));
+        assert!(!super::tier_allows_cached_pro_vectors(None));
     }
 }

@@ -2,6 +2,7 @@ use std::{
     collections::BTreeMap,
     env,
     io::{self, IsTerminal},
+    path::{Path, PathBuf},
     process::ExitCode,
 };
 
@@ -27,6 +28,10 @@ use agentprey::{
         sync::{sync_pro_vectors, PRO_SUBSCRIPTION_MESSAGE},
     },
 };
+
+const EXIT_CODE_SCAN_SUCCESS: u8 = 0;
+const EXIT_CODE_SCAN_VULNERABILITIES_FOUND: u8 = 1;
+const EXIT_CODE_SCAN_RUNTIME_ERROR: u8 = 2;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -117,34 +122,13 @@ async fn main() -> ExitCode {
         },
         Commands::Scan(args) => match resolve_scan_settings(args.as_ref()) {
             Ok(settings) => {
-                let total_vectors =
-                    match list_vectors(&settings.vectors_dir, settings.category.as_deref()) {
-                        Ok(vectors) => {
-                            let mut total = vectors.len();
-                            if let Ok(pro_vectors_dir) = auth::default_cached_vectors_dir() {
-                                if pro_vectors_dir.exists()
-                                    && pro_vectors_dir != settings.vectors_dir
-                                {
-                                    let pro_count = match list_vectors(
-                                        &pro_vectors_dir,
-                                        settings.category.as_deref(),
-                                    ) {
-                                        Ok(pro_vectors) => pro_vectors.len(),
-                                        Err(error) => {
-                                            eprintln!("{} {error}", "error:".red().bold());
-                                            return ExitCode::from(1);
-                                        }
-                                    };
-                                    total = total.saturating_add(pro_count);
-                                }
-                            }
-                            total
-                        }
-                        Err(error) => {
-                            eprintln!("{} {error}", "error:".red().bold());
-                            return ExitCode::from(1);
-                        }
-                    };
+                let total_vectors = match count_scan_vectors(&settings) {
+                    Ok(total) => total,
+                    Err(error) => {
+                        eprintln!("{} {error}", "error:".red().bold());
+                        return ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR);
+                    }
+                };
 
                 render_scan_banner();
                 let mut reporter =
@@ -167,7 +151,7 @@ async fn main() -> ExitCode {
                         if let Some(path) = settings.json_out.as_deref() {
                             if let Err(error) = write_scan_json(path, &outcome) {
                                 eprintln!("{} {error}", "error:".red().bold());
-                                return ExitCode::from(1);
+                                return ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR);
                             }
 
                             println!("JSON Output: {}", path.display());
@@ -176,30 +160,24 @@ async fn main() -> ExitCode {
                         if let Some(path) = settings.html_out.as_deref() {
                             if let Err(error) = write_scan_html(path, &outcome) {
                                 eprintln!("{} {error}", "error:".red().bold());
-                                return ExitCode::from(1);
+                                return ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR);
                             }
 
                             println!("HTML Output: {}", path.display());
                         }
 
-                        if outcome.has_vulnerabilities() {
-                            ExitCode::from(2)
-                        } else if outcome.error_count > 0 {
-                            ExitCode::from(1)
-                        } else {
-                            ExitCode::from(0)
-                        }
+                        scan_exit_code(&outcome)
                     }
                     Err(error) => {
                         reporter.finish();
                         eprintln!("{} {error}", "error:".red().bold());
-                        ExitCode::from(1)
+                        ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR)
                     }
                 }
             }
             Err(error) => {
                 eprintln!("{} {error}", "error:".red().bold());
-                ExitCode::from(1)
+                ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR)
             }
         },
         Commands::Vectors(args) => match args.command {
@@ -275,6 +253,53 @@ fn render_vectors_list(args: &VectorsListArgs) -> anyhow::Result<()> {
 
     println!();
     Ok(())
+}
+
+fn count_scan_vectors(settings: &agentprey::scan::ResolvedScanSettings) -> anyhow::Result<usize> {
+    let mut by_id = BTreeMap::new();
+
+    let free_vectors = list_vectors(&settings.vectors_dir, settings.category.as_deref())?;
+    for vector in free_vectors {
+        by_id.insert(vector.id, ());
+    }
+
+    if let Some(pro_vectors_dir) = resolve_cached_pro_vectors_dir_for_scan(&settings.vectors_dir) {
+        let pro_vectors = list_vectors(&pro_vectors_dir, settings.category.as_deref())?;
+        for vector in pro_vectors {
+            by_id.insert(vector.id, ());
+        }
+    }
+
+    Ok(by_id.len())
+}
+
+fn resolve_cached_pro_vectors_dir_for_scan(primary_vectors_dir: &Path) -> Option<PathBuf> {
+    let status = auth::status().ok()?;
+    if !status.key_configured {
+        return None;
+    }
+
+    let tier = status.tier.as_deref()?;
+    if !tier.eq_ignore_ascii_case("pro") {
+        return None;
+    }
+
+    let pro_vectors_dir = auth::default_cached_vectors_dir().ok()?;
+    if !pro_vectors_dir.exists() || pro_vectors_dir == primary_vectors_dir {
+        return None;
+    }
+
+    Some(pro_vectors_dir)
+}
+
+fn scan_exit_code(outcome: &ScanOutcome) -> ExitCode {
+    if outcome.error_count > 0 {
+        ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR)
+    } else if outcome.has_vulnerabilities() {
+        ExitCode::from(EXIT_CODE_SCAN_VULNERABILITIES_FOUND)
+    } else {
+        ExitCode::from(EXIT_CODE_SCAN_SUCCESS)
+    }
 }
 
 struct ScanProgressReporter {
@@ -507,5 +532,60 @@ fn format_age(age_seconds: u64) -> String {
         format!("{}h", age_seconds / 3_600)
     } else {
         format!("{}d", age_seconds / 86_400)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scan_exit_code;
+    use agentprey::{
+        scan::ScanOutcome,
+        scorer::{Grade, ScoreSummary, SeverityCounts},
+    };
+
+    fn outcome(vulnerable_count: usize, error_count: usize) -> ScanOutcome {
+        ScanOutcome {
+            target: "http://127.0.0.1:8787/chat".to_string(),
+            total_vectors: vulnerable_count + error_count,
+            vulnerable_count,
+            resistant_count: 0,
+            error_count,
+            score: ScoreSummary {
+                score: 100,
+                grade: Grade::A,
+                vulnerable_severities: SeverityCounts::default(),
+                error_count,
+            },
+            findings: Vec::new(),
+            duration_ms: 0,
+        }
+    }
+
+    #[test]
+    fn scan_exit_code_is_zero_when_scan_is_clean() {
+        assert_eq!(
+            scan_exit_code(&outcome(0, 0)),
+            std::process::ExitCode::from(0)
+        );
+    }
+
+    #[test]
+    fn scan_exit_code_is_one_when_vulnerabilities_are_found() {
+        assert_eq!(
+            scan_exit_code(&outcome(2, 0)),
+            std::process::ExitCode::from(1)
+        );
+    }
+
+    #[test]
+    fn scan_exit_code_is_two_for_runtime_or_scan_errors() {
+        assert_eq!(
+            scan_exit_code(&outcome(0, 1)),
+            std::process::ExitCode::from(2)
+        );
+        assert_eq!(
+            scan_exit_code(&outcome(1, 1)),
+            std::process::ExitCode::from(2)
+        );
     }
 }

@@ -111,7 +111,7 @@ async fn main() -> ExitCode {
                 }
             },
         },
-        Commands::Scan(args) => match resolve_scan_settings(&args) {
+        Commands::Scan(args) => match resolve_scan_settings(args.as_ref()) {
             Ok(settings) => {
                 let total_vectors =
                     match list_vectors(&settings.vectors_dir, settings.category.as_deref()) {

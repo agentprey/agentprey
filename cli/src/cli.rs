@@ -21,7 +21,7 @@ pub enum Commands {
     Auth(AuthArgs),
 
     /// Run a security scan against a target endpoint
-    Scan(ScanArgs),
+    Scan(Box<ScanArgs>),
 
     /// Inspect available attack vectors
     Vectors(VectorsArgs),

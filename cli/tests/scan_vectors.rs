@@ -109,6 +109,7 @@ async fn scan_uses_category_filter() {
     let args = ScanArgs {
         target: Some(format!("{}/chat", server.base_url)),
         headers: vec![],
+        request_template: None,
         timeout_seconds: Some(5),
         retries: None,
         retry_backoff_ms: None,
@@ -139,6 +140,7 @@ async fn scan_runs_all_categories_when_unfiltered() {
     let args = ScanArgs {
         target: Some(format!("{}/chat", server.base_url)),
         headers: vec![],
+        request_template: None,
         timeout_seconds: Some(5),
         retries: None,
         retry_backoff_ms: None,

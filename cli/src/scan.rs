@@ -8,7 +8,7 @@ use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use tokio::{
     sync::{Mutex, Semaphore},
-    task::JoinHandle,
+    task::JoinSet,
     time::Instant as TokioInstant,
 };
 
@@ -69,6 +69,7 @@ pub enum FindingStatus {
 pub struct ResolvedScanSettings {
     pub target: String,
     pub headers: Vec<String>,
+    pub request_format: http_target::RequestFormat,
     pub timeout_seconds: u64,
     pub retries: u32,
     pub retry_backoff_ms: u64,
@@ -104,6 +105,41 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
         args.headers.clone()
     } else {
         config_headers_as_vec(config.as_ref())
+    };
+
+    let method = config
+        .as_ref()
+        .and_then(|cfg| cfg.target.method.clone())
+        .unwrap_or_else(|| http_target::DEFAULT_HTTP_METHOD.to_string());
+
+    let request_template = args
+        .request_template
+        .clone()
+        .or_else(|| {
+            config
+                .as_ref()
+                .and_then(|cfg| cfg.target.request_template.clone())
+        })
+        .unwrap_or_else(|| http_target::DEFAULT_REQUEST_TEMPLATE.to_string());
+
+    http_target::validate_request_template(&request_template)?;
+
+    let response_path = config
+        .as_ref()
+        .and_then(|cfg| cfg.target.response_path.clone())
+        .and_then(|path| {
+            let trimmed = path.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        });
+
+    let request_format = http_target::RequestFormat {
+        method: normalize_http_method(method)?,
+        request_template: request_template.trim().to_string(),
+        response_path,
     };
 
     let timeout_seconds = args
@@ -169,6 +205,7 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
     Ok(ResolvedScanSettings {
         target,
         headers,
+        request_format,
         timeout_seconds,
         retries,
         retry_backoff_ms,
@@ -188,6 +225,18 @@ pub async fn run_scan(args: &ScanArgs) -> Result<ScanOutcome> {
 }
 
 pub async fn run_scan_with_settings(settings: &ResolvedScanSettings) -> Result<ScanOutcome> {
+    run_scan_with_settings_with_reporter(settings, |_| {}, |_| {}).await
+}
+
+pub async fn run_scan_with_settings_with_reporter<FStart, FFinding>(
+    settings: &ResolvedScanSettings,
+    mut on_start: FStart,
+    mut on_finding: FFinding,
+) -> Result<ScanOutcome>
+where
+    FStart: FnMut(usize),
+    FFinding: FnMut(&FindingOutcome),
+{
     let started_at = Instant::now();
 
     let mut vectors = load_vectors(&settings.vectors_dir).with_context(|| {
@@ -209,15 +258,18 @@ pub async fn run_scan_with_settings(settings: &ResolvedScanSettings) -> Result<S
     }
 
     vectors.sort_by(|left, right| left.vector.id.cmp(&right.vector.id));
+    let total_vectors = vectors.len();
+    on_start(total_vectors);
 
     let semaphore = Arc::new(Semaphore::new(settings.max_concurrent));
     let limiter = Arc::new(RequestRateLimiter::new(settings.rate_limit_rps));
 
-    let mut tasks: Vec<JoinHandle<FindingOutcome>> = Vec::with_capacity(vectors.len());
+    let mut tasks = JoinSet::new();
     for loaded in vectors {
         let vector = loaded.vector;
         let target = settings.target.clone();
         let headers = settings.headers.clone();
+        let request_format = settings.request_format.clone();
         let request_policy = http_target::RequestPolicy {
             timeout_seconds: settings.timeout_seconds,
             retries: settings.retries,
@@ -228,7 +280,7 @@ pub async fn run_scan_with_settings(settings: &ResolvedScanSettings) -> Result<S
         let semaphore = semaphore.clone();
         let limiter = limiter.clone();
 
-        let task = tokio::spawn(async move {
+        tasks.spawn(async move {
             let permit = semaphore
                 .acquire_owned()
                 .await
@@ -236,14 +288,21 @@ pub async fn run_scan_with_settings(settings: &ResolvedScanSettings) -> Result<S
             let _permit = permit;
 
             limiter.wait_turn().await;
-            execute_vector_scan(vector, &target, &headers, request_policy, redact_responses).await
+            execute_vector_scan(
+                vector,
+                &target,
+                &headers,
+                request_policy,
+                request_format,
+                redact_responses,
+            )
+            .await
         });
-        tasks.push(task);
     }
 
-    let mut findings = Vec::with_capacity(tasks.len());
-    for task in tasks {
-        match task.await {
+    let mut findings = Vec::with_capacity(total_vectors);
+    while let Some(task) = tasks.join_next().await {
+        match task {
             Ok(finding) => findings.push(finding),
             Err(error) => findings.push(FindingOutcome {
                 vector_id: "internal-runtime".to_string(),
@@ -259,7 +318,10 @@ pub async fn run_scan_with_settings(settings: &ResolvedScanSettings) -> Result<S
                 analysis: None,
                 duration_ms: 0,
             }),
-        }
+        };
+
+        let finding = findings.last().expect("finding should exist after push");
+        on_finding(finding);
     }
 
     findings.sort_by(|left, right| left.vector_id.cmp(&right.vector_id));
@@ -295,6 +357,7 @@ async fn execute_vector_scan(
     target: &str,
     headers: &[String],
     request_policy: http_target::RequestPolicy,
+    request_format: http_target::RequestFormat,
     redact_responses: bool,
 ) -> FindingOutcome {
     let vector_started = Instant::now();
@@ -319,7 +382,15 @@ async fn execute_vector_scan(
         }
     };
 
-    match http_target::send_payload(target, &payload.prompt, headers, request_policy).await {
+    match http_target::send_payload(
+        target,
+        &payload.prompt,
+        headers,
+        request_policy,
+        &request_format,
+    )
+    .await
+    {
         Ok(exchange) => {
             let analysis =
                 analyze_response_for_vector(&exchange.extracted_response, &vector.detection);
@@ -406,6 +477,15 @@ fn load_config_for_scan(args: &ScanArgs) -> Result<Option<ProjectConfig>> {
     load_project_config(path).map(Some)
 }
 
+fn normalize_http_method(method: String) -> Result<String> {
+    let trimmed = method.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!("target HTTP method cannot be empty"));
+    }
+
+    Ok(trimmed.to_ascii_uppercase())
+}
+
 fn config_headers_as_vec(config: Option<&ProjectConfig>) -> Vec<String> {
     let Some(config) = config else {
         return Vec::new();
@@ -438,6 +518,9 @@ mod tests {
             r#"
 [target]
 endpoint = "http://127.0.0.1:8787/chat"
+method = "patch"
+request_template = "{\"input\":{{payload}}}"
+response_path = "/result/text"
 headers = { Authorization = "Bearer config-token" }
 
 [scan]
@@ -457,6 +540,7 @@ html_out = "./from-config.html"
         let args = ScanArgs {
             target: None,
             headers: vec![],
+            request_template: None,
             timeout_seconds: None,
             retries: None,
             retry_backoff_ms: None,
@@ -478,6 +562,15 @@ html_out = "./from-config.html"
         assert_eq!(resolved.retry_backoff_ms, 300);
         assert_eq!(resolved.max_concurrent, 2);
         assert_eq!(resolved.rate_limit_rps, 10);
+        assert_eq!(resolved.request_format.method, "PATCH");
+        assert_eq!(
+            resolved.request_format.request_template,
+            "{\"input\":{{payload}}}"
+        );
+        assert_eq!(
+            resolved.request_format.response_path.as_deref(),
+            Some("/result/text")
+        );
         assert!(resolved.redact_responses);
         assert_eq!(resolved.category.as_deref(), Some("prompt-injection"));
         assert_eq!(
@@ -527,6 +620,7 @@ html_out = "./from-config.html"
         let args = ScanArgs {
             target: Some("http://cli-target".to_string()),
             headers: vec!["Authorization: Bearer cli-token".to_string()],
+            request_template: Some("{\"input\":{{payload}}}".to_string()),
             timeout_seconds: Some(7),
             retries: Some(1),
             retry_backoff_ms: Some(50),
@@ -548,6 +642,12 @@ html_out = "./from-config.html"
         assert_eq!(resolved.retry_backoff_ms, 50);
         assert_eq!(resolved.max_concurrent, 3);
         assert_eq!(resolved.rate_limit_rps, 12);
+        assert_eq!(resolved.request_format.method, "POST");
+        assert_eq!(
+            resolved.request_format.request_template,
+            "{\"input\":{{payload}}}"
+        );
+        assert_eq!(resolved.request_format.response_path, None);
         assert!(!resolved.redact_responses);
         assert_eq!(resolved.headers, vec!["Authorization: Bearer cli-token"]);
         assert_eq!(resolved.category.as_deref(), Some("custom-category"));
@@ -561,5 +661,30 @@ html_out = "./from-config.html"
             .as_ref()
             .expect("html path should exist")
             .ends_with("cli-output.html"));
+    }
+
+    #[test]
+    fn rejects_request_template_without_payload_marker() {
+        let temp = tempdir().expect("tempdir should be created");
+        let args = ScanArgs {
+            target: Some("http://cli-target".to_string()),
+            headers: vec![],
+            request_template: Some("{\"messages\":[]}".to_string()),
+            timeout_seconds: None,
+            retries: None,
+            retry_backoff_ms: None,
+            max_concurrent: None,
+            rate_limit_rps: None,
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: Some(temp.path().join("vectors")),
+            category: None,
+            json_out: None,
+            html_out: None,
+            config: None,
+        };
+
+        let error = resolve_scan_settings(&args).expect_err("invalid template should fail");
+        assert!(error.to_string().contains("{{payload}}"));
     }
 }

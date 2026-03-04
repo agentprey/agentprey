@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     env,
     io::{self, IsTerminal},
     process::ExitCode,
@@ -6,6 +7,8 @@ use std::{
 
 use clap::Parser;
 use colored::Colorize;
+use console::style;
+use indicatif::{ProgressBar, ProgressStyle};
 
 use agentprey::{
     auth::{self, CacheStaleness},
@@ -13,7 +16,10 @@ use agentprey::{
     config::write_default_config,
     output::html::write_scan_html,
     output::json::write_scan_json,
-    scan::{resolve_scan_settings, run_scan_with_settings, FindingStatus, ScanOutcome},
+    scan::{
+        resolve_scan_settings, run_scan_with_settings_with_reporter, FindingOutcome, FindingStatus,
+        ScanOutcome,
+    },
     scorer::Grade,
     vectors::{catalog::list_vectors, model::Severity, sync::sync_pro_vectors},
 };
@@ -106,41 +112,67 @@ async fn main() -> ExitCode {
             },
         },
         Commands::Scan(args) => match resolve_scan_settings(&args) {
-            Ok(settings) => match run_scan_with_settings(&settings).await {
-                Ok(outcome) => {
-                    render_scan_outcome(&outcome);
-
-                    if let Some(path) = settings.json_out.as_deref() {
-                        if let Err(error) = write_scan_json(path, &outcome) {
+            Ok(settings) => {
+                let total_vectors =
+                    match list_vectors(&settings.vectors_dir, settings.category.as_deref()) {
+                        Ok(vectors) => vectors.len(),
+                        Err(error) => {
                             eprintln!("{} {error}", "error:".red().bold());
                             return ExitCode::from(1);
                         }
+                    };
 
-                        println!("JSON Output: {}", path.display());
-                    }
+                render_scan_banner();
+                let mut reporter =
+                    ScanProgressReporter::new(total_vectors, is_interactive_output());
+                reporter.start();
 
-                    if let Some(path) = settings.html_out.as_deref() {
-                        if let Err(error) = write_scan_html(path, &outcome) {
-                            eprintln!("{} {error}", "error:".red().bold());
-                            return ExitCode::from(1);
+                match run_scan_with_settings_with_reporter(
+                    &settings,
+                    |_| {},
+                    |finding| {
+                        reporter.on_finding(finding);
+                    },
+                )
+                .await
+                {
+                    Ok(outcome) => {
+                        reporter.finish();
+                        render_final_report_card(&outcome);
+
+                        if let Some(path) = settings.json_out.as_deref() {
+                            if let Err(error) = write_scan_json(path, &outcome) {
+                                eprintln!("{} {error}", "error:".red().bold());
+                                return ExitCode::from(1);
+                            }
+
+                            println!("JSON Output: {}", path.display());
                         }
 
-                        println!("HTML Output: {}", path.display());
-                    }
+                        if let Some(path) = settings.html_out.as_deref() {
+                            if let Err(error) = write_scan_html(path, &outcome) {
+                                eprintln!("{} {error}", "error:".red().bold());
+                                return ExitCode::from(1);
+                            }
 
-                    if outcome.has_vulnerabilities() {
-                        ExitCode::from(2)
-                    } else if outcome.error_count > 0 {
+                            println!("HTML Output: {}", path.display());
+                        }
+
+                        if outcome.has_vulnerabilities() {
+                            ExitCode::from(2)
+                        } else if outcome.error_count > 0 {
+                            ExitCode::from(1)
+                        } else {
+                            ExitCode::from(0)
+                        }
+                    }
+                    Err(error) => {
+                        reporter.finish();
+                        eprintln!("{} {error}", "error:".red().bold());
                         ExitCode::from(1)
-                    } else {
-                        ExitCode::from(0)
                     }
                 }
-                Err(error) => {
-                    eprintln!("{} {error}", "error:".red().bold());
-                    ExitCode::from(1)
-                }
-            },
+            }
             Err(error) => {
                 eprintln!("{} {error}", "error:".red().bold());
                 ExitCode::from(1)
@@ -177,9 +209,15 @@ async fn main() -> ExitCode {
 
 fn configure_color_output() {
     let no_color = env::var_os("NO_COLOR").is_some();
-    let is_tty = io::stdout().is_terminal() && io::stderr().is_terminal();
+    let colors_enabled = !no_color && is_interactive_output();
 
-    colored::control::set_override(!no_color && is_tty);
+    colored::control::set_override(colors_enabled);
+    console::set_colors_enabled(colors_enabled);
+    console::set_colors_enabled_stderr(colors_enabled);
+}
+
+fn is_interactive_output() -> bool {
+    io::stdout().is_terminal() && io::stderr().is_terminal()
 }
 
 fn render_vectors_list(args: &VectorsListArgs) -> anyhow::Result<()> {
@@ -211,134 +249,208 @@ fn render_vectors_list(args: &VectorsListArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn render_scan_outcome(outcome: &ScanOutcome) {
-    println!();
-    println!("{}", "AgentPrey Scan Result".white().bold());
-    println!("{} {}", "Target:".bright_black(), outcome.target);
-    println!(
-        "{} {}",
-        "Total Vectors:".bright_black(),
-        outcome.total_vectors
-    );
-    println!("{} {}", "Score:".bright_black(), outcome.score.score);
-    println!(
-        "{} {}",
-        "Grade:".white().bold(),
-        style_grade(outcome.score.grade)
-    );
-    println!(
-        "{} {}",
-        "Vulnerable:".bright_black(),
-        style_vulnerable_count(outcome.vulnerable_count)
-    );
-    println!(
-        "{} {}",
-        "Resistant:".bright_black(),
-        style_resistant_count(outcome.resistant_count)
-    );
-    println!(
-        "{} {}",
-        "Errors:".bright_black(),
-        style_error_count(outcome.error_count)
-    );
+struct ScanProgressReporter {
+    progress: Option<ProgressBar>,
+    total: usize,
+    completed: usize,
+}
 
-    for finding in &outcome.findings {
-        let status = style_status(finding.status);
-        let severity = style_severity(&finding.severity);
+impl ScanProgressReporter {
+    fn new(total: usize, interactive: bool) -> Self {
+        let progress = if interactive {
+            let progress = ProgressBar::new(total as u64);
+            let style = ProgressStyle::with_template("[{bar:40}] {pos}/{len} {msg}")
+                .expect("progress style template should be valid")
+                .progress_chars("=>-");
+            progress.set_style(style);
+            progress.set_message("running vectors");
+            Some(progress)
+        } else {
+            None
+        };
 
-        println!(
-            "- {} | {} | {} | {}",
-            finding.vector_id, finding.vector_name, severity, status
-        );
-
-        if let Some(status_code) = finding.status_code {
-            println!("{}", format!("  HTTP Status: {status_code}").bright_black());
+        Self {
+            progress,
+            total,
+            completed: 0,
         }
-
-        if let Some(analysis) = finding.analysis.as_ref() {
-            println!(
-                "{}",
-                format!("  Confidence: {:.2}", analysis.confidence).bright_black()
-            );
-            if analysis.indicator_hits.is_empty() {
-                println!("{}", "  Indicators: none".bright_black());
-            } else {
-                println!(
-                    "{}",
-                    format!("  Indicators: {}", analysis.indicator_hits.join("; ")).bright_black()
-                );
-            }
-        }
-
-        println!(
-            "{}",
-            format!(
-                "  Response Excerpt: {}",
-                truncate_for_display(&finding.response, 180)
-            )
-            .bright_black()
-        );
     }
 
+    fn start(&self) {
+        if self.progress.is_none() {
+            println!("{}", ascii_progress_bar(0, self.total, 32));
+        }
+    }
+
+    fn on_finding(&mut self, finding: &FindingOutcome) {
+        self.completed = self.completed.saturating_add(1);
+        let status = stream_status_label(finding.status);
+        let progress_prefix = if self.progress.is_some() {
+            format!("[{}/{}]", self.completed, self.total)
+        } else {
+            ascii_progress_bar(self.completed, self.total, 32)
+        };
+        let line = format!(
+            "{} {} {} ({}/{}, severity={})",
+            progress_prefix,
+            status,
+            finding.vector_id,
+            finding.category,
+            finding.subcategory,
+            finding.severity
+        );
+
+        if let Some(progress) = &self.progress {
+            progress.inc(1);
+            progress.set_message(format!("{} complete", self.completed));
+            progress.println(line);
+        } else {
+            println!("{line}");
+        }
+    }
+
+    fn finish(&self) {
+        if let Some(progress) = &self.progress {
+            progress.finish_and_clear();
+        } else {
+            println!("{}", ascii_progress_bar(self.completed, self.total, 32));
+        }
+    }
+}
+
+#[derive(Default)]
+struct SeverityTotals {
+    critical: usize,
+    high: usize,
+    medium: usize,
+    low: usize,
+    info: usize,
+}
+
+#[derive(Default)]
+struct CategoryBreakdown {
+    total: usize,
+    vulnerable: usize,
+    secure: usize,
+    partial: usize,
+}
+
+fn render_scan_banner() {
+    println!();
+    for line in [
+        r"    ___                  __  ____                ",
+        r"   /   | ____ ____  ____/ /_/ __ \_________  __ ",
+        r"  / /| |/ __ `/ _ \/ __  / / /_/ / ___/ _ \/ / ",
+        r" / ___ / /_/ /  __/ /_/ / / ____/ /  /  __/ /  ",
+        r"/_/  |_|\__, /\___/\__,_/_/_/   /_/   \___/_/   ",
+        r"       /____/                                    ",
+    ] {
+        println!("{}", style(line).cyan().bold());
+    }
+    println!("{}", style("AgentPrey security scan starting").dim());
+    println!();
+}
+
+fn stream_status_label(status: FindingStatus) -> String {
+    match status {
+        FindingStatus::Vulnerable => style("VULNERABLE").red().bold().to_string(),
+        FindingStatus::Resistant => style("SECURE").green().bold().to_string(),
+        FindingStatus::Error => style("PARTIAL").yellow().bold().to_string(),
+    }
+}
+
+fn ascii_progress_bar(completed: usize, total: usize, width: usize) -> String {
+    if total == 0 {
+        return format!("[{}] 0/0", "-".repeat(width));
+    }
+
+    let filled = completed.saturating_mul(width) / total;
+    let bar = format!("{}{}", "#".repeat(filled), "-".repeat(width - filled));
+    format!("[{bar}] {completed}/{total}")
+}
+
+fn render_final_report_card(outcome: &ScanOutcome) {
+    let severity_totals = summarize_severity(&outcome.findings);
+    let category_totals = summarize_categories(&outcome.findings);
+
+    println!();
     println!(
         "{}",
-        format!("Duration: {} ms", outcome.duration_ms).bright_black()
+        style("=== AgentPrey Final Report ===").bold().underlined()
     );
+    println!("Target: {}", outcome.target);
+    println!("Grade: {}", style_grade(outcome.score.grade));
+    println!("Score: {}", style(outcome.score.score).bold());
+    println!(
+        "Results: {} vulnerable | {} secure | {} partial | {} total",
+        style_count(outcome.vulnerable_count, FindingStatus::Vulnerable),
+        style_count(outcome.resistant_count, FindingStatus::Resistant),
+        style_count(outcome.error_count, FindingStatus::Error),
+        outcome.total_vectors
+    );
+    println!(
+        "Severity: critical={} high={} medium={} low={} info={}",
+        severity_totals.critical,
+        severity_totals.high,
+        severity_totals.medium,
+        severity_totals.low,
+        severity_totals.info
+    );
+    println!("Categories:");
+    for (category, counts) in category_totals {
+        println!(
+            "- {:<20} total {:>3} | vuln {:>3} | secure {:>3} | partial {:>3}",
+            category, counts.total, counts.vulnerable, counts.secure, counts.partial
+        );
+    }
+    println!("Duration: {} ms", outcome.duration_ms);
     println!();
 }
 
 fn style_grade(grade: Grade) -> String {
-    let grade_text = grade.to_string();
-
+    let text = grade.to_string();
     match grade {
-        Grade::A | Grade::B => grade_text.green().bold().to_string(),
-        _ => grade_text.white().bold().to_string(),
+        Grade::A | Grade::B => style(text).green().bold().to_string(),
+        Grade::C => style(text).yellow().bold().to_string(),
+        Grade::D | Grade::F => style(text).red().bold().to_string(),
     }
 }
 
-fn style_severity(severity: &Severity) -> String {
-    match severity {
-        Severity::Critical => "CRITICAL".red().bold().to_string(),
-        Severity::Medium => "MEDIUM".yellow().to_string(),
-        Severity::Info => "INFO".bright_black().to_string(),
-        Severity::High => "HIGH".to_string(),
-        Severity::Low => "LOW".to_string(),
-    }
-}
-
-fn style_status(status: FindingStatus) -> String {
+fn style_count(count: usize, status: FindingStatus) -> String {
+    let text = count.to_string();
     match status {
-        FindingStatus::Vulnerable => "VULNERABLE".red().bold().to_string(),
-        FindingStatus::Resistant => "PASSED".green().bold().to_string(),
-        FindingStatus::Error => "WARNING".yellow().bold().to_string(),
+        FindingStatus::Vulnerable => style(text).red().bold().to_string(),
+        FindingStatus::Resistant => style(text).green().bold().to_string(),
+        FindingStatus::Error => style(text).yellow().bold().to_string(),
     }
 }
 
-fn style_vulnerable_count(count: usize) -> String {
-    let text = count.to_string();
-    if count > 0 {
-        text.red().bold().to_string()
-    } else {
-        text.bright_black().to_string()
+fn summarize_severity(findings: &[FindingOutcome]) -> SeverityTotals {
+    let mut totals = SeverityTotals::default();
+    for finding in findings {
+        match finding.severity {
+            Severity::Critical => totals.critical += 1,
+            Severity::High => totals.high += 1,
+            Severity::Medium => totals.medium += 1,
+            Severity::Low => totals.low += 1,
+            Severity::Info => totals.info += 1,
+        }
     }
+    totals
 }
 
-fn style_resistant_count(count: usize) -> String {
-    let text = count.to_string();
-    if count > 0 {
-        text.green().to_string()
-    } else {
-        text.bright_black().to_string()
+fn summarize_categories(findings: &[FindingOutcome]) -> BTreeMap<String, CategoryBreakdown> {
+    let mut categories: BTreeMap<String, CategoryBreakdown> = BTreeMap::new();
+    for finding in findings {
+        let entry = categories.entry(finding.category.clone()).or_default();
+        entry.total += 1;
+        match finding.status {
+            FindingStatus::Vulnerable => entry.vulnerable += 1,
+            FindingStatus::Resistant => entry.secure += 1,
+            FindingStatus::Error => entry.partial += 1,
+        }
     }
-}
-
-fn style_error_count(count: usize) -> String {
-    let text = count.to_string();
-    if count > 0 {
-        text.yellow().to_string()
-    } else {
-        text.bright_black().to_string()
-    }
+    categories
 }
 
 fn format_last_refresh(status: &auth::AuthStatus) -> String {
@@ -368,14 +480,4 @@ fn format_age(age_seconds: u64) -> String {
     } else {
         format!("{}d", age_seconds / 86_400)
     }
-}
-
-fn truncate_for_display(text: &str, max_chars: usize) -> String {
-    let total_chars = text.chars().count();
-    if total_chars <= max_chars {
-        return text.to_string();
-    }
-
-    let clipped: String = text.chars().take(max_chars).collect();
-    format!("{clipped}...")
 }

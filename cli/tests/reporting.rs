@@ -86,6 +86,7 @@ async fn error_heavy_scans_do_not_grade_high() {
     let args = ScanArgs {
         target: Some("http://127.0.0.1:9/chat".to_string()),
         headers: vec![],
+        request_template: None,
         timeout_seconds: Some(1),
         retries: Some(0),
         retry_backoff_ms: Some(1),
@@ -121,6 +122,7 @@ async fn html_report_contains_redacted_response_text() {
     let args = ScanArgs {
         target: Some(format!("{}/chat", server.base_url)),
         headers: vec![],
+        request_template: None,
         timeout_seconds: Some(5),
         retries: Some(0),
         retry_backoff_ms: Some(1),

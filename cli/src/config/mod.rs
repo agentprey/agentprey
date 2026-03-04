@@ -22,6 +22,9 @@ pub struct ProjectConfig {
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct TargetConfig {
     pub endpoint: Option<String>,
+    pub method: Option<String>,
+    pub request_template: Option<String>,
+    pub response_path: Option<String>,
     #[serde(default)]
     pub headers: BTreeMap<String, String>,
 }
@@ -82,6 +85,13 @@ pub fn write_default_config(path: &Path, force: bool) -> Result<()> {
 pub const DEFAULT_CONFIG_TEMPLATE: &str = r#"[target]
 # Required for config-driven scans
 endpoint = "http://127.0.0.1:8787/chat"
+method = "POST"
+
+# Optional custom JSON request template with a {{payload}} marker
+# request_template = "{\"messages\":[{\"role\":\"user\",\"content\":{{payload}}}]}"
+
+# Optional JSON pointer path for response extraction
+# response_path = "/choices/0/message/content"
 
 # Optional headers to send with every request
 headers = { }
@@ -103,7 +113,7 @@ redact_responses = true
 
 [auth]
 # Optional entitlement API base URL override
-# api_url = "https://marvelous-sandpiper-677.convex.site"
+# api_url = "https://PLACEHOLDER.convex.site"
 "#;
 
 #[cfg(test)]
@@ -124,6 +134,9 @@ mod tests {
             r#"
 [target]
 endpoint = "http://127.0.0.1:8787/chat"
+method = "PATCH"
+request_template = "{\"input\":{{payload}}}"
+response_path = "/result/text"
 headers = { Authorization = "Bearer test-token" }
 
 [scan]
@@ -151,6 +164,12 @@ api_url = "https://custom-auth.example"
             parsed.target.endpoint.as_deref(),
             Some("http://127.0.0.1:8787/chat")
         );
+        assert_eq!(parsed.target.method.as_deref(), Some("PATCH"));
+        assert_eq!(
+            parsed.target.request_template.as_deref(),
+            Some("{\"input\":{{payload}}}")
+        );
+        assert_eq!(parsed.target.response_path.as_deref(), Some("/result/text"));
         assert_eq!(
             parsed
                 .target

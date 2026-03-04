@@ -13,7 +13,7 @@ use crate::config::load_project_config;
 
 const AGENTPREY_DIR: &str = ".agentprey";
 const CREDENTIALS_FILE: &str = "credentials.toml";
-const DEFAULT_ENTITLEMENT_BASE_URL: &str = "https://marvelous-sandpiper-677.convex.site";
+const DEFAULT_API_URL: &str = "https://PLACEHOLDER.convex.site";
 const ENTITLEMENT_PATH: &str = "/api/entitlement";
 const API_URL_ENV_VAR: &str = "AGENTPREY_API_URL";
 const DEFAULT_PROJECT_CONFIG_FILE: &str = ".agentprey.toml";
@@ -281,7 +281,7 @@ fn resolve_api_base_url() -> Result<String> {
         }
     }
 
-    Ok(DEFAULT_ENTITLEMENT_BASE_URL.to_string())
+    Ok(DEFAULT_API_URL.to_string())
 }
 
 fn normalize_api_base_url(url: String) -> Result<String> {

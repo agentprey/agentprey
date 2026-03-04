@@ -99,6 +99,7 @@ async fn retries_transient_status_and_recovers() {
     let args = ScanArgs {
         target: Some(format!("{}/chat", server.base_url)),
         headers: vec![],
+        request_template: None,
         timeout_seconds: Some(5),
         retries: Some(1),
         retry_backoff_ms: Some(10),
@@ -144,6 +145,7 @@ async fn applies_rate_limit_to_request_starts() {
     let args = ScanArgs {
         target: Some(format!("{}/chat", server.base_url)),
         headers: vec![],
+        request_template: None,
         timeout_seconds: Some(5),
         retries: Some(0),
         retry_backoff_ms: Some(10),
@@ -206,6 +208,7 @@ rate_limit_rps = 20
     let args = ScanArgs {
         target: None,
         headers: vec![],
+        request_template: None,
         timeout_seconds: Some(5),
         retries: Some(0),
         retry_backoff_ms: Some(10),

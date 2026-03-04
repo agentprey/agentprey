@@ -99,7 +99,7 @@ cargo run --manifest-path cli/Cargo.toml -- vectors sync --pro
 cargo run --manifest-path cli/Cargo.toml -- auth logout
 ```
 
-Entitlement API defaults to `https://marvelous-sandpiper-677.convex.site/api/entitlement`.
+Entitlement API defaults to `https://PLACEHOLDER.convex.site/api/entitlement`.
 Override with `AGENTPREY_API_URL` or `.agentprey.toml`:
 
 ```toml

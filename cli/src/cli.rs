@@ -48,6 +48,10 @@ pub struct ScanArgs {
     #[arg(long = "header", value_name = "KEY: VALUE", action = ArgAction::Append)]
     pub headers: Vec<String>,
 
+    /// Custom JSON request template containing a {{payload}} marker
+    #[arg(long)]
+    pub request_template: Option<String>,
+
     /// Request timeout in seconds
     #[arg(long)]
     pub timeout_seconds: Option<u64>,

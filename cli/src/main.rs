@@ -8,7 +8,7 @@ use clap::Parser;
 use colored::Colorize;
 
 use agentprey::{
-    auth,
+    auth::{self, CacheStaleness},
     cli::{AuthCommands, Cli, Commands, VectorsCommands, VectorsListArgs},
     config::write_default_config,
     output::html::write_scan_html,
@@ -40,6 +40,16 @@ async fn main() -> ExitCode {
                 Ok(path) => {
                     println!("Auth activated");
                     println!("Credentials: {}", path.display());
+                    match auth::refresh().await {
+                        Ok(entitlement) => {
+                            println!("Entitlement refreshed: tier={}", entitlement.tier);
+                        }
+                        Err(error) => {
+                            println!(
+                                "Entitlement refresh unavailable: {error}. You can retry with `agentprey auth refresh`."
+                            );
+                        }
+                    }
                     ExitCode::from(0)
                 }
                 Err(error) => {
@@ -47,9 +57,9 @@ async fn main() -> ExitCode {
                     ExitCode::from(1)
                 }
             },
-            AuthCommands::Refresh => match auth::refresh() {
-                Ok(tier) => {
-                    println!("Refreshed: tier={tier}");
+            AuthCommands::Refresh => match auth::refresh().await {
+                Ok(entitlement) => {
+                    println!("Refreshed: tier={}", entitlement.tier);
                     ExitCode::from(0)
                 }
                 Err(error) => {
@@ -57,15 +67,36 @@ async fn main() -> ExitCode {
                     ExitCode::from(1)
                 }
             },
-            AuthCommands::Status => match auth::current_tier() {
-                Ok(Some(tier)) => {
-                    println!("Auth: activated");
+            AuthCommands::Status => match auth::status() {
+                Ok(status) => {
+                    if status.key_configured {
+                        println!("Auth: activated");
+                    } else {
+                        println!("Auth: not activated");
+                    }
+
+                    let tier = if status.key_configured {
+                        status.tier.as_deref().unwrap_or("unknown")
+                    } else {
+                        "none"
+                    };
+
                     println!("Tier: {tier}");
+                    println!("Last Refresh: {}", format_last_refresh(&status));
                     ExitCode::from(0)
                 }
-                Ok(None) => {
-                    println!("Auth: not activated");
-                    println!("Tier: none");
+                Err(error) => {
+                    eprintln!("{} {error}", "error:".red().bold());
+                    ExitCode::from(1)
+                }
+            },
+            AuthCommands::Logout => match auth::logout() {
+                Ok(true) => {
+                    println!("Auth cleared");
+                    ExitCode::from(0)
+                }
+                Ok(false) => {
+                    println!("Auth already cleared");
                     ExitCode::from(0)
                 }
                 Err(error) => {
@@ -129,9 +160,9 @@ async fn main() -> ExitCode {
                     return ExitCode::from(1);
                 }
 
-                match sync_pro_vectors() {
+                match sync_pro_vectors().await {
                     Ok(count) => {
-                        println!("Pro vectors synced: {count} vectors (backend not connected)");
+                        println!("Pro vectors synced: {count} vectors");
                         ExitCode::from(0)
                     }
                     Err(error) => {
@@ -307,6 +338,35 @@ fn style_error_count(count: usize) -> String {
         text.yellow().to_string()
     } else {
         text.bright_black().to_string()
+    }
+}
+
+fn format_last_refresh(status: &auth::AuthStatus) -> String {
+    let Some(last_refresh) = status.last_successful_refresh_epoch_secs else {
+        return "never".to_string();
+    };
+
+    match status.staleness() {
+        Some(CacheStaleness::Fresh { age_seconds }) => {
+            format!("{last_refresh} ({} ago, fresh)", format_age(age_seconds))
+        }
+        Some(CacheStaleness::Stale { age_seconds }) => {
+            format!("{last_refresh} ({} ago, stale)", format_age(age_seconds))
+        }
+        Some(CacheStaleness::ClockSkew) => format!("{last_refresh} (clock skew detected)"),
+        None => last_refresh.to_string(),
+    }
+}
+
+fn format_age(age_seconds: u64) -> String {
+    if age_seconds < 60 {
+        format!("{age_seconds}s")
+    } else if age_seconds < 3_600 {
+        format!("{}m", age_seconds / 60)
+    } else if age_seconds < 86_400 {
+        format!("{}h", age_seconds / 3_600)
+    } else {
+        format!("{}d", age_seconds / 86_400)
     }
 }
 

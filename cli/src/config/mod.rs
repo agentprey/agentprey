@@ -15,6 +15,8 @@ pub struct ProjectConfig {
     pub scan: ScanConfig,
     #[serde(default)]
     pub output: OutputConfig,
+    #[serde(default)]
+    pub auth: AuthConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -40,6 +42,11 @@ pub struct ScanConfig {
 pub struct OutputConfig {
     pub json_out: Option<PathBuf>,
     pub html_out: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct AuthConfig {
+    pub api_url: Option<String>,
 }
 
 pub fn load_project_config(path: &PathBuf) -> Result<ProjectConfig> {
@@ -93,6 +100,10 @@ redact_responses = true
 # Optional default output artifact path
 # json_out = "./scan.json"
 # html_out = "./scan.html"
+
+[auth]
+# Optional entitlement API base URL override
+# api_url = "https://marvelous-sandpiper-677.convex.site"
 "#;
 
 #[cfg(test)]
@@ -128,6 +139,9 @@ redact_responses = true
 [output]
 json_out = "./scan.json"
 html_out = "./scan.html"
+
+[auth]
+api_url = "https://custom-auth.example"
 "#,
         )
         .expect("config fixture should be written");
@@ -162,6 +176,10 @@ html_out = "./scan.html"
                 .as_ref()
                 .map(|path| path.to_string_lossy()),
             Some("./scan.html".into())
+        );
+        assert_eq!(
+            parsed.auth.api_url.as_deref(),
+            Some("https://custom-auth.example")
         );
     }
 

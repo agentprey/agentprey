@@ -113,6 +113,9 @@ pub enum AuthCommands {
 
     /// Show the currently resolved subscription tier
     Status,
+
+    /// Remove local credentials and cached entitlement metadata
+    Logout,
 }
 
 #[derive(Debug, Clone, Args)]

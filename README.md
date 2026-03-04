@@ -6,8 +6,8 @@ This repository currently contains the Day 5 vertical slice:
 
 - Rust CLI with `scan` and `vectors list` commands
 - Project config initialization via `init`
-- Local auth scaffolding via `auth activate`, `auth status`, and `auth refresh`
-- Pro vector sync scaffold via `vectors sync --pro`
+- Local auth commands with live entitlement refresh (`auth activate`, `auth status`, `auth refresh`, `auth logout`)
+- Pro vector sync entitlement gating via `vectors sync --pro`
 - HTTP endpoint testing with YAML-defined prompt-injection vectors
 - Config + CLI merged scan settings (CLI overrides config)
 - Category filtering for vector listing and scans
@@ -96,6 +96,15 @@ cargo run --manifest-path cli/Cargo.toml -- auth activate --key apy_example_key
 cargo run --manifest-path cli/Cargo.toml -- auth status
 cargo run --manifest-path cli/Cargo.toml -- auth refresh
 cargo run --manifest-path cli/Cargo.toml -- vectors sync --pro
+cargo run --manifest-path cli/Cargo.toml -- auth logout
+```
+
+Entitlement API defaults to `https://marvelous-sandpiper-677.convex.site/api/entitlement`.
+Override with `AGENTPREY_API_URL` or `.agentprey.toml`:
+
+```toml
+[auth]
+api_url = "https://your-convex-host.convex.site"
 ```
 
 Run the scanner:

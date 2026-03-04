@@ -21,7 +21,11 @@ use agentprey::{
         ScanOutcome,
     },
     scorer::Grade,
-    vectors::{catalog::list_vectors, model::Severity, sync::sync_pro_vectors},
+    vectors::{
+        catalog::list_vectors,
+        model::Severity,
+        sync::{sync_pro_vectors, PRO_SUBSCRIPTION_MESSAGE},
+    },
 };
 
 #[tokio::main]
@@ -115,7 +119,27 @@ async fn main() -> ExitCode {
             Ok(settings) => {
                 let total_vectors =
                     match list_vectors(&settings.vectors_dir, settings.category.as_deref()) {
-                        Ok(vectors) => vectors.len(),
+                        Ok(vectors) => {
+                            let mut total = vectors.len();
+                            if let Ok(pro_vectors_dir) = auth::default_cached_vectors_dir() {
+                                if pro_vectors_dir.exists()
+                                    && pro_vectors_dir != settings.vectors_dir
+                                {
+                                    let pro_count = match list_vectors(
+                                        &pro_vectors_dir,
+                                        settings.category.as_deref(),
+                                    ) {
+                                        Ok(pro_vectors) => pro_vectors.len(),
+                                        Err(error) => {
+                                            eprintln!("{} {error}", "error:".red().bold());
+                                            return ExitCode::from(1);
+                                        }
+                                    };
+                                    total = total.saturating_add(pro_count);
+                                }
+                            }
+                            total
+                        }
                         Err(error) => {
                             eprintln!("{} {error}", "error:".red().bold());
                             return ExitCode::from(1);
@@ -193,6 +217,10 @@ async fn main() -> ExitCode {
                 }
 
                 match sync_pro_vectors().await {
+                    Ok(0) => {
+                        println!("{PRO_SUBSCRIPTION_MESSAGE}");
+                        ExitCode::from(0)
+                    }
                     Ok(count) => {
                         println!("Pro vectors synced: {count} vectors");
                         ExitCode::from(0)

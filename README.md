@@ -226,7 +226,7 @@ jobs:
 
 - HTTP target only
 - Single-turn payload execution (first payload per vector)
-- Prompt-injection vectors only (20 vectors)
+- Prompt-injection vectors only (21 vectors)
 
 ## Notes
 

@@ -5,7 +5,13 @@ use std::path::PathBuf;
 #[command(
     name = "agentprey",
     version,
-    about = "Security scanner for AI agent endpoints"
+    about = "AgentPrey — Security scanner for AI agent endpoints. Detect prompt injection, tool misuse, data exfiltration, and more.",
+    after_help = r#"Examples:
+  agentprey scan --target https://my-agent.com/api
+  agentprey scan --target https://my-agent.com/api --category prompt-injection
+  agentprey scan --target https://my-agent.com/api --request-template '{"input": "{{payload}}"}'
+  agentprey auth activate --key <your_api_key>
+  agentprey vectors sync --pro"#
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -14,16 +20,16 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Initialize a default project config file
+    /// Initialize a project config file (.agentprey.toml) in the current directory
     Init(InitArgs),
 
-    /// Configure local authentication credentials
+    /// Manage your Pro authentication (activate, status, refresh, logout)
     Auth(AuthArgs),
 
-    /// Run a security scan against a target endpoint
+    /// Run a security scan against a target endpoint. Use --target to specify the URL, --category to filter vectors, --request-template for custom agent formats
     Scan(Box<ScanArgs>),
 
-    /// Inspect available attack vectors
+    /// List, inspect, and sync attack vectors. Use 'vectors list' to see available vectors, 'vectors sync --pro' to download Pro vectors
     Vectors(VectorsArgs),
 }
 

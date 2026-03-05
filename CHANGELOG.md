@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## v0.1.2
+
+### Changed
+
+- Improved top-level CLI help output with richer command descriptions and usage examples for scan, auth, and vectors workflows
+
 ## v0.1.1
 
 ### Added

@@ -18,7 +18,7 @@ use crate::vectors::{
 const AGENTPREY_DIR: &str = ".agentprey";
 const CREDENTIALS_FILE: &str = "credentials.toml";
 const CACHED_VECTORS_DIR: &str = "vectors";
-const DEFAULT_API_URL: &str = "https://PLACEHOLDER.convex.site";
+const DEFAULT_API_URL: &str = "https://brilliant-meerkat-569.convex.site";
 const ENTITLEMENT_PATH: &str = "/api/entitlement";
 const API_URL_ENV_VAR: &str = "AGENTPREY_API_URL";
 const DEFAULT_PROJECT_CONFIG_FILE: &str = ".agentprey.toml";

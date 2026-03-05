@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## v0.1.3
+
+### Added
+
+- Added a new free prompt-injection vector for Base64 decode-and-comply instruction recovery attacks
+
+### Changed
+
+- Prompt-injection vector catalog now includes 21 bundled free vectors
+
 ## v0.1.2
 
 ### Changed

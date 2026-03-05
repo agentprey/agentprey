@@ -9,6 +9,7 @@ use std::path::PathBuf;
     after_help = r#"Examples:
   agentprey scan --target https://my-agent.com/api
   agentprey scan --target https://my-agent.com/api --category prompt-injection
+  agentprey scan --type openclaw --target ./some-openclaw-project
   agentprey scan --target https://my-agent.com/api --request-template '{"input": "{{payload}}"}'
   agentprey auth activate --key <your_api_key>
   agentprey vectors sync --pro"#
@@ -44,11 +45,22 @@ pub struct InitArgs {
     pub force: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TargetType {
+    Http,
+    Openclaw,
+}
+
 #[derive(Debug, Clone, Args)]
 pub struct ScanArgs {
-    /// Target HTTP endpoint URL
+    /// Target HTTP endpoint URL or local OpenClaw project path
     #[arg(long)]
     pub target: Option<String>,
+
+    /// Target type for scan execution
+    #[arg(long = "type", value_enum, default_value_t = TargetType::Http)]
+    pub target_type: TargetType,
 
     /// Additional request header in the form: "Key: Value"
     #[arg(long = "header", value_name = "KEY: VALUE", action = ArgAction::Append)]

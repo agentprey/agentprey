@@ -1,0 +1,30 @@
+id: "oc-perm-002"
+name: "Wildcard Or Missing Permission Scoping"
+description: "Detects wildcard permissions or missing least-privilege markers in OpenClaw configs."
+category: "openclaw"
+subcategory: "permissions"
+severity: "high"
+tier: "free"
+tags: ["openclaw", "permissions", "least-privilege"]
+payloads:
+  - name: "Static audit"
+    prompt: "Audit the project for wildcard or missing permission scoping."
+detection:
+  indicators:
+    - type: "contains_any"
+      values: ["permissions = [\"*\"]", "scopes = [\"*\"]", "allow_all = true"]
+      description: "Wildcard permissions are configured"
+      weight: 0.9
+    - type: "missing_any"
+      values: ["allowlist", "read_only", "read-only", "least privilege"]
+      description: "No clear permission scoping markers are present"
+      weight: 0.7
+  threshold: 0.6
+remediation:
+  summary: "Replace wildcard permissions with explicit allowlists and read-only defaults."
+  steps:
+    - "Define scoped permission sets for each tool."
+    - "Document least-privilege controls in config or prompt policy."
+  references:
+    - "https://genai.owasp.org/llmrisk/llm08-excessive-agency/"
+owasp_mapping: "LLM08"

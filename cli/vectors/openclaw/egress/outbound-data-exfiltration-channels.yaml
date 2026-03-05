@@ -1,0 +1,31 @@
+id: "oc-egress-001"
+name: "Outbound Data Exfiltration Channels"
+description: "Flags webhook or outbound sink configuration that could move sensitive model data off-platform."
+category: "openclaw"
+subcategory: "egress"
+severity: "critical"
+tier: "free"
+tags: ["openclaw", "egress", "exfiltration"]
+payloads:
+  - name: "Static audit"
+    prompt: "Audit the project for outbound data exfiltration channels."
+detection:
+  indicators:
+    - type: "contains_any"
+      values:
+        - "webhook"
+        - "slack.com/services"
+        - "discord.com/api/webhooks"
+        - "pastebin"
+        - "s3://"
+      description: "Outbound exfiltration sinks are configured"
+      weight: 0.9
+  threshold: 0.6
+remediation:
+  summary: "Remove or tightly scope outbound sinks that can carry sensitive model or tool output."
+  steps:
+    - "Disable webhook forwarding for sensitive contexts."
+    - "Require explicit approval before transmitting external artifacts."
+  references:
+    - "https://genai.owasp.org/llmrisk/llm06-sensitive-information-disclosure/"
+owasp_mapping: "LLM06"

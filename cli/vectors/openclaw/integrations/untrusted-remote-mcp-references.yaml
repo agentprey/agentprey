@@ -1,0 +1,28 @@
+id: "oc-mcp-001"
+name: "Untrusted Remote MCP References"
+description: "Flags remote MCP endpoints that appear to be trusted without local mediation."
+category: "openclaw"
+subcategory: "integrations"
+severity: "high"
+tier: "free"
+tags: ["openclaw", "mcp", "remote"]
+payloads:
+  - name: "Static audit"
+    prompt: "Audit the project for untrusted remote MCP references."
+detection:
+  indicators:
+    - type: "regex_any"
+      values:
+        - "mcp[_\\s-]*servers?[^\\n]{0,120}https?://"
+        - "remote_mcp[^\\n]{0,120}https?://"
+      description: "Remote MCP endpoints are configured directly"
+      weight: 0.9
+  threshold: 0.6
+remediation:
+  summary: "Require vetted local MCP transports or explicit trust review before enabling remote MCP endpoints."
+  steps:
+    - "Prefer local sockets or pinned internal endpoints."
+    - "Review and pin any remote MCP dependency before deployment."
+  references:
+    - "https://genai.owasp.org/llmrisk/llm07-system-prompt-leakage/"
+owasp_mapping: "LLM07"

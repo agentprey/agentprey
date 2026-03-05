@@ -20,6 +20,7 @@ const CREDENTIALS_FILE: &str = "credentials.toml";
 const CACHED_VECTORS_DIR: &str = "vectors";
 const DEFAULT_API_URL: &str = "https://brilliant-meerkat-569.convex.site";
 const ENTITLEMENT_PATH: &str = "/api/entitlement";
+const AGENTPREY_HOME_ENV_VAR: &str = "AGENTPREY_HOME";
 const API_URL_ENV_VAR: &str = "AGENTPREY_API_URL";
 const DEFAULT_PROJECT_CONFIG_FILE: &str = ".agentprey.toml";
 const USER_AGENT_HEADER_PREFIX: &str = "agentprey/";
@@ -251,6 +252,13 @@ pub fn logout() -> Result<bool> {
 }
 
 pub fn default_agentprey_dir() -> Result<PathBuf> {
+    if let Some(agentprey_home) = env::var_os(AGENTPREY_HOME_ENV_VAR) {
+        let path = PathBuf::from(agentprey_home);
+        if !path.as_os_str().is_empty() {
+            return Ok(path);
+        }
+    }
+
     let home =
         env::var_os("HOME").ok_or_else(|| anyhow!("HOME environment variable is not set"))?;
     Ok(PathBuf::from(home).join(AGENTPREY_DIR))
@@ -601,7 +609,7 @@ fn truncate(value: &str, max_chars: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, thread, time::Duration};
+    use std::{env, fs, thread, time::Duration};
 
     use tempfile::tempdir;
     use tiny_http::{Header, Response, Server};
@@ -609,9 +617,9 @@ mod tests {
     use crate::vectors::parser::parse_vector_from_yaml;
 
     use crate::auth::{
-        logout_from_path, normalize_api_key, read_credentials_from_path,
+        default_agentprey_dir, logout_from_path, normalize_api_key, read_credentials_from_path,
         refresh_from_path_with_base_url, require_api_key_from_path, status_from_path,
-        write_api_key_to_path, CacheStaleness, MISSING_API_KEY_ERROR,
+        write_api_key_to_path, CacheStaleness, AGENTPREY_HOME_ENV_VAR, MISSING_API_KEY_ERROR,
     };
 
     struct MockEntitlementServer {
@@ -695,6 +703,23 @@ mod tests {
     fn rejects_empty_api_key() {
         let error = normalize_api_key("   ".to_string()).expect_err("empty key should fail");
         assert!(error.to_string().contains("API key cannot be empty"));
+    }
+
+    #[test]
+    fn prefers_agentprey_home_override_when_present() {
+        let temp = tempdir().expect("tempdir should be created");
+        let override_path = temp.path().join("custom-agentprey-home");
+        let previous = env::var_os(AGENTPREY_HOME_ENV_VAR);
+
+        env::set_var(AGENTPREY_HOME_ENV_VAR, &override_path);
+        let resolved = default_agentprey_dir().expect("override should resolve");
+
+        match previous {
+            Some(value) => env::set_var(AGENTPREY_HOME_ENV_VAR, value),
+            None => env::remove_var(AGENTPREY_HOME_ENV_VAR),
+        }
+
+        assert_eq!(resolved, override_path);
     }
 
     #[tokio::test]

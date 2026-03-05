@@ -1,6 +1,13 @@
 use std::{fs, thread, time::Duration};
 
-use agentprey::{cli::ScanArgs, output::html::write_scan_html, scan::run_scan, scorer::Grade};
+mod test_support;
+
+use agentprey::{
+    cli::{ScanArgs, TargetType},
+    output::html::write_scan_html,
+    scan::run_scan,
+    scorer::Grade,
+};
 use tempfile::tempdir;
 use tiny_http::{Header, Response, Server};
 
@@ -78,72 +85,80 @@ detection:
 
 #[tokio::test]
 async fn error_heavy_scans_do_not_grade_high() {
-    let vectors_temp = tempdir().expect("tempdir should be created");
-    let vectors_dir = vectors_temp.path().join("vectors");
-    write_vector(&vectors_dir, "pi-error-001");
-    write_vector(&vectors_dir, "pi-error-002");
+    test_support::with_temp_agentprey_home(|_| async {
+        let vectors_temp = tempdir().expect("tempdir should be created");
+        let vectors_dir = vectors_temp.path().join("vectors");
+        write_vector(&vectors_dir, "pi-error-001");
+        write_vector(&vectors_dir, "pi-error-002");
 
-    let args = ScanArgs {
-        target: Some("http://127.0.0.1:9/chat".to_string()),
-        headers: vec![],
-        request_template: None,
-        timeout_seconds: Some(1),
-        retries: Some(0),
-        retry_backoff_ms: Some(1),
-        max_concurrent: Some(2),
-        rate_limit_rps: Some(50),
-        redact_responses: false,
-        no_redact_responses: false,
-        vectors_dir: Some(vectors_dir),
-        category: Some("prompt-injection".to_string()),
-        json_out: None,
-        html_out: None,
-        config: None,
-    };
+        let args = ScanArgs {
+            target: Some("http://127.0.0.1:9/chat".to_string()),
+            target_type: TargetType::Http,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: Some(1),
+            retries: Some(0),
+            retry_backoff_ms: Some(1),
+            max_concurrent: Some(2),
+            rate_limit_rps: Some(50),
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: Some(vectors_dir),
+            category: Some("prompt-injection".to_string()),
+            json_out: None,
+            html_out: None,
+            config: None,
+        };
 
-    let outcome = run_scan(&args)
-        .await
-        .expect("scan should complete with findings");
-    assert_eq!(outcome.error_count, 2);
-    assert!(matches!(outcome.score.grade, Grade::D | Grade::F));
-    assert!(outcome.score.score <= 84);
+        let outcome = run_scan(&args)
+            .await
+            .expect("scan should complete with findings");
+        assert_eq!(outcome.error_count, 2);
+        assert!(matches!(outcome.score.grade, Grade::D | Grade::F));
+        assert!(outcome.score.score <= 84);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn html_report_contains_redacted_response_text() {
-    let vectors_temp = tempdir().expect("tempdir should be created");
-    let vectors_dir = vectors_temp.path().join("vectors");
-    write_vector(&vectors_dir, "pi-redact-001");
+    test_support::with_temp_agentprey_home(|_| async {
+        let vectors_temp = tempdir().expect("tempdir should be created");
+        let vectors_dir = vectors_temp.path().join("vectors");
+        write_vector(&vectors_dir, "pi-redact-001");
 
-    let server = spawn_single_response_server(
-        r#"{"choices":[{"message":{"content":"Authorization: Bearer abcdefghijklmnop token=super-secret"}}]}"#,
-    );
+        let server = spawn_single_response_server(
+            r#"{"choices":[{"message":{"content":"Authorization: Bearer abcdefghijklmnop token=super-secret"}}]}"#,
+        );
 
-    let args = ScanArgs {
-        target: Some(format!("{}/chat", server.base_url)),
-        headers: vec![],
-        request_template: None,
-        timeout_seconds: Some(5),
-        retries: Some(0),
-        retry_backoff_ms: Some(1),
-        max_concurrent: Some(1),
-        rate_limit_rps: Some(20),
-        redact_responses: false,
-        no_redact_responses: false,
-        vectors_dir: Some(vectors_dir),
-        category: Some("prompt-injection".to_string()),
-        json_out: None,
-        html_out: None,
-        config: None,
-    };
+        let args = ScanArgs {
+            target: Some(format!("{}/chat", server.base_url)),
+            target_type: TargetType::Http,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: Some(5),
+            retries: Some(0),
+            retry_backoff_ms: Some(1),
+            max_concurrent: Some(1),
+            rate_limit_rps: Some(20),
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: Some(vectors_dir),
+            category: Some("prompt-injection".to_string()),
+            json_out: None,
+            html_out: None,
+            config: None,
+        };
 
-    let outcome = run_scan(&args).await.expect("scan should succeed");
-    let output_temp = tempdir().expect("tempdir should be created");
-    let html_path = output_temp.path().join("scan.html");
-    write_scan_html(&html_path, &outcome).expect("html output should be written");
+        let outcome = run_scan(&args).await.expect("scan should succeed");
+        let output_temp = tempdir().expect("tempdir should be created");
+        let html_path = output_temp.path().join("scan.html");
+        write_scan_html(&html_path, &outcome).expect("html output should be written");
 
-    let html = fs::read_to_string(&html_path).expect("html output should exist");
-    assert!(html.contains("[REDACTED]"));
-    assert!(!html.contains("super-secret"));
-    assert!(!html.contains("abcdefghijklmnop"));
+        let html = fs::read_to_string(&html_path).expect("html output should exist");
+        assert!(html.contains("[REDACTED]"));
+        assert!(!html.contains("super-secret"));
+        assert!(!html.contains("abcdefghijklmnop"));
+    })
+    .await;
 }

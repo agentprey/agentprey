@@ -2,7 +2,6 @@ use std::{
     collections::BTreeMap,
     env,
     io::{self, IsTerminal},
-    path::{Path, PathBuf},
     process::ExitCode,
 };
 
@@ -18,8 +17,8 @@ use agentprey::{
     output::html::write_scan_html,
     output::json::write_scan_json,
     scan::{
-        resolve_scan_settings, run_scan_with_settings_with_reporter, FindingOutcome, FindingStatus,
-        ScanOutcome,
+        count_vectors_for_settings, resolve_scan_settings, run_scan_with_settings_with_reporter,
+        FindingOutcome, FindingStatus, ScanOutcome,
     },
     scorer::Grade,
     vectors::{
@@ -122,7 +121,7 @@ async fn main() -> ExitCode {
         },
         Commands::Scan(args) => match resolve_scan_settings(args.as_ref()) {
             Ok(settings) => {
-                let total_vectors = match count_scan_vectors(&settings) {
+                let total_vectors = match count_vectors_for_settings(&settings) {
                     Ok(total) => total,
                     Err(error) => {
                         eprintln!("{} {error}", "error:".red().bold());
@@ -253,43 +252,6 @@ fn render_vectors_list(args: &VectorsListArgs) -> anyhow::Result<()> {
 
     println!();
     Ok(())
-}
-
-fn count_scan_vectors(settings: &agentprey::scan::ResolvedScanSettings) -> anyhow::Result<usize> {
-    let mut by_id = BTreeMap::new();
-
-    let free_vectors = list_vectors(&settings.vectors_dir, settings.category.as_deref())?;
-    for vector in free_vectors {
-        by_id.insert(vector.id, ());
-    }
-
-    if let Some(pro_vectors_dir) = resolve_cached_pro_vectors_dir_for_scan(&settings.vectors_dir) {
-        let pro_vectors = list_vectors(&pro_vectors_dir, settings.category.as_deref())?;
-        for vector in pro_vectors {
-            by_id.insert(vector.id, ());
-        }
-    }
-
-    Ok(by_id.len())
-}
-
-fn resolve_cached_pro_vectors_dir_for_scan(primary_vectors_dir: &Path) -> Option<PathBuf> {
-    let status = auth::status().ok()?;
-    if !status.key_configured {
-        return None;
-    }
-
-    let tier = status.tier.as_deref()?;
-    if !tier.eq_ignore_ascii_case("pro") {
-        return None;
-    }
-
-    let pro_vectors_dir = auth::default_cached_vectors_dir().ok()?;
-    if !pro_vectors_dir.exists() || pro_vectors_dir == primary_vectors_dir {
-        return None;
-    }
-
-    Some(pro_vectors_dir)
 }
 
 fn scan_exit_code(outcome: &ScanOutcome) -> ExitCode {

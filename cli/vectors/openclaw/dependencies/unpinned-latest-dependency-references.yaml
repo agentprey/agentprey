@@ -1,0 +1,29 @@
+id: "oc-deps-001"
+name: "Unpinned Or Latest Dependency References"
+description: "Detects floating container or package references that make OpenClaw builds hard to audit."
+category: "openclaw"
+subcategory: "dependencies"
+severity: "medium"
+tier: "free"
+tags: ["openclaw", "dependencies", "supply-chain"]
+payloads:
+  - name: "Static audit"
+    prompt: "Audit the project for unpinned or latest dependency references."
+detection:
+  indicators:
+    - type: "regex_any"
+      values:
+        - ":latest\\b"
+        - "@latest\\b"
+        - "branch\\s*=\\s*\"main\""
+      description: "Floating dependency references are present"
+      weight: 0.9
+  threshold: 0.6
+remediation:
+  summary: "Pin image tags, package versions, and git references to reviewed releases."
+  steps:
+    - "Replace latest tags with audited versions."
+    - "Pin packages and git dependencies to explicit releases or SHAs."
+  references:
+    - "https://owasp.org/www-project-top-10-for-large-language-model-applications/"
+owasp_mapping: "LLM05"

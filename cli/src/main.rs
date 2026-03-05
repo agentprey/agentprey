@@ -12,15 +12,16 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 use agentprey::{
     auth::{self, CacheStaleness},
-    cli::{AuthCommands, Cli, Commands, VectorsCommands, VectorsListArgs},
+    cli::{AuthCommands, Cli, Commands, ScanUi, VectorsCommands, VectorsListArgs},
     config::write_default_config,
     output::html::write_scan_html,
     output::json::write_scan_json,
     scan::{
         count_vectors_for_settings, resolve_scan_settings, run_scan_with_settings_with_reporter,
-        FindingOutcome, FindingStatus, ScanOutcome,
+        FindingOutcome, FindingStatus, ResolvedScanSettings, ScanOutcome,
     },
     scorer::Grade,
+    tui::run_scan_with_tui,
     vectors::{
         catalog::list_vectors,
         model::Severity,
@@ -119,66 +120,19 @@ async fn main() -> ExitCode {
                 }
             },
         },
-        Commands::Scan(args) => match resolve_scan_settings(args.as_ref()) {
-            Ok(settings) => {
-                let total_vectors = match count_vectors_for_settings(&settings) {
-                    Ok(total) => total,
-                    Err(error) => {
-                        eprintln!("{} {error}", "error:".red().bold());
-                        return ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR);
-                    }
-                };
-
-                render_scan_banner();
-                let mut reporter =
-                    ScanProgressReporter::new(total_vectors, is_interactive_output());
-                reporter.start();
-
-                match run_scan_with_settings_with_reporter(
-                    &settings,
-                    |_| {},
-                    |finding| {
-                        reporter.on_finding(finding);
-                    },
-                )
-                .await
-                {
-                    Ok(outcome) => {
-                        reporter.finish();
-                        render_final_report_card(&outcome);
-
-                        if let Some(path) = settings.json_out.as_deref() {
-                            if let Err(error) = write_scan_json(path, &outcome) {
-                                eprintln!("{} {error}", "error:".red().bold());
-                                return ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR);
-                            }
-
-                            println!("JSON Output: {}", path.display());
-                        }
-
-                        if let Some(path) = settings.html_out.as_deref() {
-                            if let Err(error) = write_scan_html(path, &outcome) {
-                                eprintln!("{} {error}", "error:".red().bold());
-                                return ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR);
-                            }
-
-                            println!("HTML Output: {}", path.display());
-                        }
-
-                        scan_exit_code(&outcome)
-                    }
-                    Err(error) => {
-                        reporter.finish();
-                        eprintln!("{} {error}", "error:".red().bold());
-                        ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR)
-                    }
+        Commands::Scan(args) => {
+            let ui = args.ui;
+            match resolve_scan_settings(args.as_ref()) {
+                Ok(settings) => match ui {
+                    ScanUi::Plain => run_plain_scan(&settings).await,
+                    ScanUi::Tui => run_tui_scan(&settings).await,
+                },
+                Err(error) => {
+                    eprintln!("{} {error}", "error:".red().bold());
+                    ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR)
                 }
             }
-            Err(error) => {
-                eprintln!("{} {error}", "error:".red().bold());
-                ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR)
-            }
-        },
+        }
         Commands::Vectors(args) => match args.command {
             VectorsCommands::List(list_args) => match render_vectors_list(&list_args) {
                 Ok(()) => ExitCode::from(0),
@@ -210,6 +164,74 @@ async fn main() -> ExitCode {
             }
         },
     }
+}
+
+async fn run_plain_scan(settings: &ResolvedScanSettings) -> ExitCode {
+    let total_vectors = match count_vectors_for_settings(settings) {
+        Ok(total) => total,
+        Err(error) => {
+            eprintln!("{} {error}", "error:".red().bold());
+            return ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR);
+        }
+    };
+
+    render_scan_banner();
+    let mut reporter = ScanProgressReporter::new(total_vectors, is_interactive_output());
+    reporter.start();
+
+    match run_scan_with_settings_with_reporter(
+        settings,
+        |_| {},
+        |finding| {
+            reporter.on_finding(finding);
+        },
+    )
+    .await
+    {
+        Ok(outcome) => {
+            reporter.finish();
+            finalize_scan_success(settings, &outcome)
+        }
+        Err(error) => {
+            reporter.finish();
+            eprintln!("{} {error}", "error:".red().bold());
+            ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR)
+        }
+    }
+}
+
+async fn run_tui_scan(settings: &ResolvedScanSettings) -> ExitCode {
+    match run_scan_with_tui(settings).await {
+        Ok(outcome) => finalize_scan_success(settings, &outcome),
+        Err(error) => {
+            eprintln!("{} {error}", "error:".red().bold());
+            ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR)
+        }
+    }
+}
+
+fn finalize_scan_success(settings: &ResolvedScanSettings, outcome: &ScanOutcome) -> ExitCode {
+    render_final_report_card(outcome);
+
+    if let Some(path) = settings.json_out.as_deref() {
+        if let Err(error) = write_scan_json(path, outcome) {
+            eprintln!("{} {error}", "error:".red().bold());
+            return ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR);
+        }
+
+        println!("JSON Output: {}", path.display());
+    }
+
+    if let Some(path) = settings.html_out.as_deref() {
+        if let Err(error) = write_scan_html(path, outcome) {
+            eprintln!("{} {error}", "error:".red().bold());
+            return ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR);
+        }
+
+        println!("HTML Output: {}", path.display());
+    }
+
+    scan_exit_code(outcome)
 }
 
 fn configure_color_output() {

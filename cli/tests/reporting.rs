@@ -3,7 +3,7 @@ use std::{fs, thread, time::Duration};
 mod test_support;
 
 use agentprey::{
-    cli::{ScanArgs, TargetType},
+    cli::{ScanArgs, ScanUi, TargetType},
     output::html::write_scan_html,
     scan::run_scan,
     scorer::Grade,
@@ -108,6 +108,7 @@ async fn error_heavy_scans_do_not_grade_high() {
             json_out: None,
             html_out: None,
             config: None,
+            ui: ScanUi::Plain,
         };
 
         let outcome = run_scan(&args)
@@ -148,6 +149,7 @@ async fn html_report_contains_redacted_response_text() {
             json_out: None,
             html_out: None,
             config: None,
+            ui: ScanUi::Plain,
         };
 
         let outcome = run_scan(&args).await.expect("scan should succeed");

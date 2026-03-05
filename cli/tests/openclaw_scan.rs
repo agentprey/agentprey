@@ -3,7 +3,7 @@ use std::fs;
 mod test_support;
 
 use agentprey::{
-    cli::{ScanArgs, TargetType},
+    cli::{ScanArgs, ScanUi, TargetType},
     scan::run_scan,
 };
 use tempfile::tempdir;
@@ -114,6 +114,7 @@ async fn openclaw_scan_flags_risky_fixture_and_reduces_findings_for_safe_fixture
             json_out: None,
             html_out: None,
             config: None,
+            ui: ScanUi::Plain,
         };
 
         let safe_args = ScanArgs {
@@ -133,6 +134,7 @@ async fn openclaw_scan_flags_risky_fixture_and_reduces_findings_for_safe_fixture
             json_out: None,
             html_out: None,
             config: None,
+            ui: ScanUi::Plain,
         };
 
         let risky_outcome = run_scan(&risky_args)
@@ -178,6 +180,7 @@ async fn openclaw_rejects_http_urls_with_local_path_error() {
             json_out: None,
             html_out: None,
             config: None,
+            ui: ScanUi::Plain,
         };
 
         let error = run_scan(&args).await.expect_err("url target should fail");

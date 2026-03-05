@@ -6,7 +6,7 @@ use std::{
 mod test_support;
 
 use agentprey::{
-    cli::{ScanArgs, TargetType},
+    cli::{ScanArgs, ScanUi, TargetType},
     output::json::write_scan_json,
     scan::run_scan,
 };
@@ -121,6 +121,7 @@ async fn retries_transient_status_and_recovers() {
             json_out: None,
             html_out: None,
             config: None,
+            ui: ScanUi::Plain,
         };
 
         let outcome = run_scan(&args).await.expect("scan should succeed");
@@ -171,6 +172,7 @@ async fn applies_rate_limit_to_request_starts() {
             json_out: None,
             html_out: None,
             config: None,
+            ui: ScanUi::Plain,
         };
 
         let started = Instant::now();
@@ -238,6 +240,7 @@ rate_limit_rps = 20
             json_out: None,
             html_out: None,
             config: Some(config_path),
+            ui: ScanUi::Plain,
         };
 
         let outcome = run_scan(&args).await.expect("scan should succeed");

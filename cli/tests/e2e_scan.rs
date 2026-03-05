@@ -3,7 +3,7 @@ use std::{fs, thread, time::Duration};
 mod test_support;
 
 use agentprey::{
-    cli::{ScanArgs, TargetType},
+    cli::{ScanArgs, ScanUi, TargetType},
     scan::{run_scan, FindingStatus},
 };
 use tempfile::tempdir;
@@ -145,6 +145,7 @@ async fn marks_vulnerable_response_as_vulnerable() {
             json_out: None,
             html_out: None,
             config: None,
+            ui: ScanUi::Plain,
         };
 
         let outcome = run_scan(&args).await.expect("scan should succeed");
@@ -180,6 +181,7 @@ async fn marks_resistant_response_as_resistant() {
             json_out: None,
             html_out: None,
             config: None,
+            ui: ScanUi::Plain,
         };
 
         let outcome = run_scan(&args).await.expect("scan should succeed");
@@ -236,6 +238,7 @@ category = "prompt-injection"
             json_out: None,
             html_out: None,
             config: Some(config_path),
+            ui: ScanUi::Plain,
         };
 
         let outcome = run_scan(&args).await.expect("scan should succeed");

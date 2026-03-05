@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-cargo install agentprey
+cargo install agentprey --locked
 ```
 
 ## Update
@@ -31,5 +31,5 @@ agentprey scan --target http://127.0.0.1:8787/chat --category prompt-injection
 
 - The published binary includes bundled free vectors for out-of-the-box scans.
 - You can still point to a custom vector directory with `--vectors-dir`.
-- Entitlement API URL defaults to `https://PLACEHOLDER.convex.site` and can be overridden with `AGENTPREY_API_URL` or `.agentprey.toml` `[auth].api_url`.
+- Entitlement API URL defaults to `https://brilliant-meerkat-569.convex.site` and can be overridden with `AGENTPREY_API_URL` or `.agentprey.toml` `[auth].api_url`.
 - Project repository: `https://github.com/agentprey/agentprey`

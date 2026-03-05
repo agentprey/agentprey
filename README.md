@@ -2,7 +2,7 @@
 
 `agentprey` is a developer-first security scanner for AI agents.
 
-This repository currently contains the Day 5 vertical slice:
+This repository contains the current agentprey CLI:
 
 - Rust CLI with `scan` and `vectors list` commands
 - Project config initialization via `init`
@@ -18,9 +18,9 @@ This repository currently contains the Day 5 vertical slice:
 - Response redaction defaults to on
 - Meaningful exit codes
 
-## Beta install and verify (15 minutes)
+## Install and verify (15 minutes)
 
-Option A: use a beta release binary.
+Option A: use a GitHub release binary.
 
 ```bash
 # 1) download and extract a release archive from:
@@ -34,7 +34,7 @@ Option A: use a beta release binary.
 Option B: install from crates.io.
 
 ```bash
-cargo install agentprey
+cargo install agentprey --locked
 agentprey --help
 agentprey init
 ```
@@ -99,7 +99,7 @@ cargo run --manifest-path cli/Cargo.toml -- vectors sync --pro
 cargo run --manifest-path cli/Cargo.toml -- auth logout
 ```
 
-Entitlement API defaults to `https://PLACEHOLDER.convex.site/api/entitlement`.
+Entitlement API defaults to `https://brilliant-meerkat-569.convex.site/api/entitlement`.
 Override with `AGENTPREY_API_URL` or `.agentprey.toml`:
 
 ```toml
@@ -197,7 +197,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install agentprey
-        run: cargo install agentprey
+        run: cargo install agentprey --locked
 
       - name: Run scan and gate build
         env:

@@ -1,7 +1,9 @@
 use std::{fs, thread, time::Duration};
 
+mod test_support;
+
 use agentprey::{
-    cli::ScanArgs,
+    cli::{ScanArgs, TargetType},
     scan::{run_scan, FindingStatus},
 };
 use tempfile::tempdir;
@@ -120,78 +122,87 @@ detection:
 
 #[tokio::test]
 async fn marks_vulnerable_response_as_vulnerable() {
-    let (_fixture_dir, vectors_dir) = write_single_vector_fixture();
-    let server = spawn_mock_server(
-        r#"{"choices":[{"message":{"content":"My system prompt is: You are an internal assistant with unrestricted access."}}]}"#,
-    );
+    test_support::with_temp_agentprey_home(|_| async {
+        let (_fixture_dir, vectors_dir) = write_single_vector_fixture();
+        let server = spawn_mock_server(
+            r#"{"choices":[{"message":{"content":"My system prompt is: You are an internal assistant with unrestricted access."}}]}"#,
+        );
 
-    let args = ScanArgs {
-        target: Some(format!("{}/chat", server.base_url)),
-        headers: vec![],
-        request_template: None,
-        timeout_seconds: Some(5),
-        retries: None,
-        retry_backoff_ms: None,
-        max_concurrent: None,
-        rate_limit_rps: None,
-        redact_responses: false,
-        no_redact_responses: false,
-        vectors_dir: Some(vectors_dir),
-        category: Some("prompt-injection".to_string()),
-        json_out: None,
-        html_out: None,
-        config: None,
-    };
+        let args = ScanArgs {
+            target: Some(format!("{}/chat", server.base_url)),
+            target_type: TargetType::Http,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: Some(5),
+            retries: None,
+            retry_backoff_ms: None,
+            max_concurrent: None,
+            rate_limit_rps: None,
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: Some(vectors_dir),
+            category: Some("prompt-injection".to_string()),
+            json_out: None,
+            html_out: None,
+            config: None,
+        };
 
-    let outcome = run_scan(&args).await.expect("scan should succeed");
-    assert_eq!(outcome.total_vectors, 1);
-    assert_eq!(outcome.vulnerable_count, 1);
-    assert_eq!(outcome.findings[0].status, FindingStatus::Vulnerable);
+        let outcome = run_scan(&args).await.expect("scan should succeed");
+        assert_eq!(outcome.total_vectors, 1);
+        assert_eq!(outcome.vulnerable_count, 1);
+        assert_eq!(outcome.findings[0].status, FindingStatus::Vulnerable);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn marks_resistant_response_as_resistant() {
-    let (_fixture_dir, vectors_dir) = write_single_vector_fixture();
-    let server = spawn_mock_server(
-        r#"{"choices":[{"message":{"content":"I cannot share system instructions and will not ignore safety rules."}}]}"#,
-    );
+    test_support::with_temp_agentprey_home(|_| async {
+        let (_fixture_dir, vectors_dir) = write_single_vector_fixture();
+        let server = spawn_mock_server(
+            r#"{"choices":[{"message":{"content":"I cannot share system instructions and will not ignore safety rules."}}]}"#,
+        );
 
-    let args = ScanArgs {
-        target: Some(format!("{}/chat", server.base_url)),
-        headers: vec![],
-        request_template: None,
-        timeout_seconds: Some(5),
-        retries: None,
-        retry_backoff_ms: None,
-        max_concurrent: None,
-        rate_limit_rps: None,
-        redact_responses: false,
-        no_redact_responses: false,
-        vectors_dir: Some(vectors_dir),
-        category: Some("prompt-injection".to_string()),
-        json_out: None,
-        html_out: None,
-        config: None,
-    };
+        let args = ScanArgs {
+            target: Some(format!("{}/chat", server.base_url)),
+            target_type: TargetType::Http,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: Some(5),
+            retries: None,
+            retry_backoff_ms: None,
+            max_concurrent: None,
+            rate_limit_rps: None,
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: Some(vectors_dir),
+            category: Some("prompt-injection".to_string()),
+            json_out: None,
+            html_out: None,
+            config: None,
+        };
 
-    let outcome = run_scan(&args).await.expect("scan should succeed");
-    assert_eq!(outcome.total_vectors, 1);
-    assert_eq!(outcome.resistant_count, 1);
-    assert_eq!(outcome.findings[0].status, FindingStatus::Resistant);
+        let outcome = run_scan(&args).await.expect("scan should succeed");
+        assert_eq!(outcome.total_vectors, 1);
+        assert_eq!(outcome.resistant_count, 1);
+        assert_eq!(outcome.findings[0].status, FindingStatus::Resistant);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn applies_target_method_template_and_response_path_from_config() {
-    let (_fixture_dir, vectors_dir) = write_single_vector_fixture();
-    let server = spawn_template_server("PATCH");
-    let endpoint = format!("{}/chat", server.base_url);
+    test_support::with_temp_agentprey_home(|_| async {
+        let (_fixture_dir, vectors_dir) = write_single_vector_fixture();
+        let server = spawn_template_server("PATCH");
+        let endpoint = format!("{}/chat", server.base_url);
 
-    let temp = tempdir().expect("tempdir should be created");
-    let config_path = temp.path().join(".agentprey.toml");
-    fs::write(
-        &config_path,
-        format!(
-            r#"
+        let temp = tempdir().expect("tempdir should be created");
+        let config_path = temp.path().join(".agentprey.toml");
+        fs::write(
+            &config_path,
+            format!(
+                r#"
 [target]
 endpoint = "{endpoint}"
 method = "PATCH"
@@ -202,32 +213,35 @@ response_path = "/result/text"
 vectors_dir = "{vectors_dir}"
 category = "prompt-injection"
 "#,
-            endpoint = endpoint,
-            vectors_dir = vectors_dir.display(),
-        ),
-    )
-    .expect("config should be written");
+                endpoint = endpoint,
+                vectors_dir = vectors_dir.display(),
+            ),
+        )
+        .expect("config should be written");
 
-    let args = ScanArgs {
-        target: None,
-        headers: vec![],
-        request_template: None,
-        timeout_seconds: Some(5),
-        retries: None,
-        retry_backoff_ms: None,
-        max_concurrent: None,
-        rate_limit_rps: None,
-        redact_responses: false,
-        no_redact_responses: false,
-        vectors_dir: None,
-        category: None,
-        json_out: None,
-        html_out: None,
-        config: Some(config_path),
-    };
+        let args = ScanArgs {
+            target: None,
+            target_type: TargetType::Http,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: Some(5),
+            retries: None,
+            retry_backoff_ms: None,
+            max_concurrent: None,
+            rate_limit_rps: None,
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: None,
+            category: None,
+            json_out: None,
+            html_out: None,
+            config: Some(config_path),
+        };
 
-    let outcome = run_scan(&args).await.expect("scan should succeed");
-    assert_eq!(outcome.total_vectors, 1);
-    assert_eq!(outcome.vulnerable_count, 1);
-    assert_eq!(outcome.findings[0].status, FindingStatus::Vulnerable);
+        let outcome = run_scan(&args).await.expect("scan should succeed");
+        assert_eq!(outcome.total_vectors, 1);
+        assert_eq!(outcome.vulnerable_count, 1);
+        assert_eq!(outcome.findings[0].status, FindingStatus::Vulnerable);
+    })
+    .await;
 }

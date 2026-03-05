@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    env,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
@@ -14,13 +15,13 @@ use tokio::{
 };
 
 use crate::{
-    analyzer::{analyze_response_for_vector, Analysis, Verdict},
+    analyzer::Analysis,
     auth,
-    cli::ScanArgs,
+    cli::{ScanArgs, TargetType},
     config::{load_project_config, ProjectConfig},
     http_target,
-    redaction::redact_text,
     scorer::{score_findings, ScoreSummary},
+    targets::ResolvedTarget,
     vectors::{
         loader::{load_vectors, load_vectors_from_dir, LoadedVector},
         model::Severity,
@@ -34,6 +35,7 @@ const DEFAULT_RETRY_BACKOFF_MS: u64 = 250;
 const DEFAULT_MAX_CONCURRENT: usize = 2;
 const DEFAULT_RATE_LIMIT_RPS: u32 = 10;
 const DEFAULT_REDACT_RESPONSES: bool = true;
+pub const OPENCLAW_VECTOR_CATEGORY: &str = "openclaw";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ScanOutcome {
@@ -71,10 +73,16 @@ pub enum FindingStatus {
 }
 
 #[derive(Debug, Clone)]
-pub struct ResolvedScanSettings {
-    pub target: String,
+pub struct HttpScanSettings {
     pub headers: Vec<String>,
     pub request_format: http_target::RequestFormat,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedScanSettings {
+    pub target_type: TargetType,
+    pub target: String,
+    pub http: Option<HttpScanSettings>,
     pub timeout_seconds: u64,
     pub retries: u32,
     pub retry_backoff_ms: u64,
@@ -95,6 +103,7 @@ impl ScanOutcome {
 
 pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
     let config = load_config_for_scan(args)?;
+    let target_type = resolve_target_type(args, config.as_ref());
 
     let target = args
         .target
@@ -105,47 +114,6 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
                 "scan target is required (pass --target or provide [target].endpoint in config)"
             )
         })?;
-
-    let headers = if !args.headers.is_empty() {
-        args.headers.clone()
-    } else {
-        config_headers_as_vec(config.as_ref())
-    };
-
-    let method = config
-        .as_ref()
-        .and_then(|cfg| cfg.target.method.clone())
-        .unwrap_or_else(|| http_target::DEFAULT_HTTP_METHOD.to_string());
-
-    let request_template = args
-        .request_template
-        .clone()
-        .or_else(|| {
-            config
-                .as_ref()
-                .and_then(|cfg| cfg.target.request_template.clone())
-        })
-        .unwrap_or_else(|| http_target::DEFAULT_REQUEST_TEMPLATE.to_string());
-
-    http_target::validate_request_template(&request_template)?;
-
-    let response_path = config
-        .as_ref()
-        .and_then(|cfg| cfg.target.response_path.clone())
-        .and_then(|path| {
-            let trimmed = path.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        });
-
-    let request_format = http_target::RequestFormat {
-        method: normalize_http_method(method)?,
-        request_template: request_template.trim().to_string(),
-        response_path,
-    };
 
     let timeout_seconds = args
         .timeout_seconds
@@ -196,6 +164,7 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
         .category
         .clone()
         .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.category.clone()));
+    validate_category_for_target(target_type, category.as_deref())?;
 
     let json_out = args
         .json_out
@@ -207,10 +176,15 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
         .clone()
         .or_else(|| config.as_ref().and_then(|cfg| cfg.output.html_out.clone()));
 
+    let http = match target_type {
+        TargetType::Http => Some(resolve_http_scan_settings(args, config.as_ref())?),
+        TargetType::Openclaw => None,
+    };
+
     Ok(ResolvedScanSettings {
+        target_type,
         target,
-        headers,
-        request_format,
+        http,
         timeout_seconds,
         retries,
         retry_backoff_ms,
@@ -222,6 +196,94 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
         json_out,
         html_out,
     })
+}
+
+fn resolve_target_type(args: &ScanArgs, config: Option<&ProjectConfig>) -> TargetType {
+    if args.target_type != TargetType::Http {
+        return args.target_type;
+    }
+
+    if cli_target_type_was_explicitly_set() {
+        return TargetType::Http;
+    }
+
+    config
+        .and_then(|cfg| cfg.target.target_type)
+        .unwrap_or(TargetType::Http)
+}
+
+fn cli_target_type_was_explicitly_set() -> bool {
+    env::args_os().any(|arg| {
+        let value = arg.to_string_lossy();
+        value == "--type" || value.starts_with("--type=")
+    })
+}
+
+fn resolve_http_scan_settings(
+    args: &ScanArgs,
+    config: Option<&ProjectConfig>,
+) -> Result<HttpScanSettings> {
+    let headers = if !args.headers.is_empty() {
+        args.headers.clone()
+    } else {
+        config_headers_as_vec(config)
+    };
+
+    let method = config
+        .and_then(|cfg| cfg.target.method.clone())
+        .unwrap_or_else(|| http_target::DEFAULT_HTTP_METHOD.to_string());
+
+    let request_template = args
+        .request_template
+        .clone()
+        .or_else(|| config.and_then(|cfg| cfg.target.request_template.clone()))
+        .unwrap_or_else(|| http_target::DEFAULT_REQUEST_TEMPLATE.to_string());
+
+    http_target::validate_request_template(&request_template)?;
+
+    let response_path = config
+        .and_then(|cfg| cfg.target.response_path.clone())
+        .and_then(|path| {
+            let trimmed = path.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        });
+
+    Ok(HttpScanSettings {
+        headers,
+        request_format: http_target::RequestFormat {
+            method: normalize_http_method(method)?,
+            request_template: request_template.trim().to_string(),
+            response_path,
+        },
+    })
+}
+
+fn validate_category_for_target(target_type: TargetType, category: Option<&str>) -> Result<()> {
+    let Some(category) = category.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+
+    if target_type == TargetType::Http && category.eq_ignore_ascii_case(OPENCLAW_VECTOR_CATEGORY) {
+        return Err(anyhow!(
+            "category '{}' requires `agentprey scan --type openclaw`",
+            OPENCLAW_VECTOR_CATEGORY
+        ));
+    }
+
+    if target_type == TargetType::Openclaw
+        && !category.eq_ignore_ascii_case(OPENCLAW_VECTOR_CATEGORY)
+    {
+        return Err(anyhow!(
+            "openclaw scans currently support category '{}' or no category filter",
+            OPENCLAW_VECTOR_CATEGORY
+        ));
+    }
+
+    Ok(())
 }
 
 fn resolve_cached_pro_vectors_dir() -> Option<PathBuf> {
@@ -267,6 +329,33 @@ fn load_vectors_for_scan(
     Ok(loaded_by_id.into_values().collect())
 }
 
+fn filter_vectors_for_settings(vectors: &mut Vec<LoadedVector>, settings: &ResolvedScanSettings) {
+    if let Some(category) = settings.category.as_deref() {
+        vectors.retain(|loaded| loaded.vector.category == category);
+        return;
+    }
+
+    vectors.retain(|loaded| {
+        vector_is_compatible_with_target(&loaded.vector.category, settings.target_type)
+    });
+}
+
+fn vector_is_compatible_with_target(category: &str, target_type: TargetType) -> bool {
+    let is_openclaw = category.eq_ignore_ascii_case(OPENCLAW_VECTOR_CATEGORY);
+    match target_type {
+        TargetType::Http => !is_openclaw,
+        TargetType::Openclaw => is_openclaw,
+    }
+}
+
+pub fn count_vectors_for_settings(settings: &ResolvedScanSettings) -> Result<usize> {
+    let cached_pro_vectors_dir = resolve_cached_pro_vectors_dir();
+    let mut vectors =
+        load_vectors_for_scan(&settings.vectors_dir, cached_pro_vectors_dir.as_deref())?;
+    filter_vectors_for_settings(&mut vectors, settings);
+    Ok(vectors.len())
+}
+
 pub async fn run_scan(args: &ScanArgs) -> Result<ScanOutcome> {
     let settings = resolve_scan_settings(args)?;
     run_scan_with_settings(&settings).await
@@ -286,14 +375,12 @@ where
     FFinding: FnMut(&FindingOutcome),
 {
     let started_at = Instant::now();
+    let resolved_target = Arc::new(ResolvedTarget::from_settings(settings)?);
 
     let cached_pro_vectors_dir = resolve_cached_pro_vectors_dir();
     let mut vectors =
         load_vectors_for_scan(&settings.vectors_dir, cached_pro_vectors_dir.as_deref())?;
-
-    if let Some(category) = settings.category.as_deref() {
-        vectors.retain(|loaded| loaded.vector.category == category);
-    }
+    filter_vectors_for_settings(&mut vectors, settings);
 
     if vectors.is_empty() {
         return Err(anyhow!(
@@ -307,21 +394,17 @@ where
     on_start(total_vectors);
 
     let semaphore = Arc::new(Semaphore::new(settings.max_concurrent));
-    let limiter = Arc::new(RequestRateLimiter::new(settings.rate_limit_rps));
+    let limiter = match settings.target_type {
+        TargetType::Http => Some(Arc::new(RequestRateLimiter::new(settings.rate_limit_rps))),
+        TargetType::Openclaw => None,
+    };
+    let shared_settings = Arc::new(settings.clone());
 
     let mut tasks = JoinSet::new();
     for loaded in vectors {
         let vector = loaded.vector;
-        let target = settings.target.clone();
-        let headers = settings.headers.clone();
-        let request_format = settings.request_format.clone();
-        let request_policy = http_target::RequestPolicy {
-            timeout_seconds: settings.timeout_seconds,
-            retries: settings.retries,
-            retry_backoff_ms: settings.retry_backoff_ms,
-        };
-        let redact_responses = settings.redact_responses;
-
+        let resolved_target = resolved_target.clone();
+        let settings = shared_settings.clone();
         let semaphore = semaphore.clone();
         let limiter = limiter.clone();
 
@@ -332,16 +415,13 @@ where
                 .expect("semaphore should stay open during scan");
             let _permit = permit;
 
-            limiter.wait_turn().await;
-            execute_vector_scan(
-                vector,
-                &target,
-                &headers,
-                request_policy,
-                request_format,
-                redact_responses,
-            )
-            .await
+            if let Some(limiter) = limiter.as_ref() {
+                limiter.wait_turn().await;
+            }
+
+            resolved_target
+                .execute_vector(vector, settings.as_ref())
+                .await
         });
     }
 
@@ -395,93 +475,6 @@ where
         findings,
         duration_ms,
     })
-}
-
-async fn execute_vector_scan(
-    vector: crate::vectors::model::Vector,
-    target: &str,
-    headers: &[String],
-    request_policy: http_target::RequestPolicy,
-    request_format: http_target::RequestFormat,
-    redact_responses: bool,
-) -> FindingOutcome {
-    let vector_started = Instant::now();
-
-    let payload = match vector.payloads.first().cloned() {
-        Some(payload) => payload,
-        None => {
-            return FindingOutcome {
-                vector_id: vector.id,
-                vector_name: vector.name,
-                category: vector.category,
-                subcategory: vector.subcategory,
-                severity: vector.severity,
-                payload_name: "missing".to_string(),
-                payload_prompt: "missing".to_string(),
-                status: FindingStatus::Error,
-                status_code: None,
-                response: "vector payload list is empty".to_string(),
-                analysis: None,
-                duration_ms: vector_started.elapsed().as_millis(),
-            };
-        }
-    };
-
-    match http_target::send_payload(
-        target,
-        &payload.prompt,
-        headers,
-        request_policy,
-        &request_format,
-    )
-    .await
-    {
-        Ok(exchange) => {
-            let analysis =
-                analyze_response_for_vector(&exchange.extracted_response, &vector.detection);
-            let status = match analysis.verdict {
-                Verdict::Vulnerable => FindingStatus::Vulnerable,
-                Verdict::Resistant => FindingStatus::Resistant,
-            };
-
-            FindingOutcome {
-                vector_id: vector.id,
-                vector_name: vector.name,
-                category: vector.category,
-                subcategory: vector.subcategory,
-                severity: vector.severity,
-                payload_name: payload.name,
-                payload_prompt: payload.prompt,
-                status,
-                status_code: Some(exchange.status),
-                response: maybe_redact(&exchange.extracted_response, redact_responses),
-                analysis: Some(analysis),
-                duration_ms: vector_started.elapsed().as_millis(),
-            }
-        }
-        Err(error) => FindingOutcome {
-            vector_id: vector.id,
-            vector_name: vector.name,
-            category: vector.category,
-            subcategory: vector.subcategory,
-            severity: vector.severity,
-            payload_name: payload.name,
-            payload_prompt: payload.prompt,
-            status: FindingStatus::Error,
-            status_code: None,
-            response: maybe_redact(&error.to_string(), redact_responses),
-            analysis: None,
-            duration_ms: vector_started.elapsed().as_millis(),
-        },
-    }
-}
-
-fn maybe_redact(input: &str, enabled: bool) -> String {
-    if enabled {
-        redact_text(input)
-    } else {
-        input.to_string()
-    }
 }
 
 #[derive(Debug)]
@@ -553,8 +546,11 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::{
-        cli::ScanArgs,
-        scan::{load_vectors_for_scan, resolve_scan_settings},
+        cli::{ScanArgs, TargetType},
+        scan::{
+            filter_vectors_for_settings, load_vectors_for_scan, resolve_scan_settings,
+            OPENCLAW_VECTOR_CATEGORY,
+        },
     };
 
     fn write_vector(root: &std::path::Path, relative_path: &str, id: &str, category: &str) {
@@ -620,6 +616,7 @@ html_out = "./from-config.html"
 
         let args = ScanArgs {
             target: None,
+            target_type: TargetType::Http,
             headers: vec![],
             request_template: None,
             timeout_seconds: None,
@@ -643,13 +640,33 @@ html_out = "./from-config.html"
         assert_eq!(resolved.retry_backoff_ms, 300);
         assert_eq!(resolved.max_concurrent, 2);
         assert_eq!(resolved.rate_limit_rps, 10);
-        assert_eq!(resolved.request_format.method, "PATCH");
+        assert_eq!(resolved.target_type, TargetType::Http);
         assert_eq!(
-            resolved.request_format.request_template,
+            resolved
+                .http
+                .as_ref()
+                .expect("http settings should exist")
+                .request_format
+                .method,
+            "PATCH"
+        );
+        assert_eq!(
+            resolved
+                .http
+                .as_ref()
+                .expect("http settings should exist")
+                .request_format
+                .request_template,
             "{\"input\":{{payload}}}"
         );
         assert_eq!(
-            resolved.request_format.response_path.as_deref(),
+            resolved
+                .http
+                .as_ref()
+                .expect("http settings should exist")
+                .request_format
+                .response_path
+                .as_deref(),
             Some("/result/text")
         );
         assert!(resolved.redact_responses);
@@ -668,7 +685,14 @@ html_out = "./from-config.html"
                 .map(|path| path.to_string_lossy()),
             Some("./from-config.html".into())
         );
-        assert_eq!(resolved.headers, vec!["Authorization: Bearer config-token"]);
+        assert_eq!(
+            resolved
+                .http
+                .as_ref()
+                .expect("http settings should exist")
+                .headers,
+            vec!["Authorization: Bearer config-token"]
+        );
     }
 
     #[test]
@@ -700,6 +724,7 @@ html_out = "./from-config.html"
 
         let args = ScanArgs {
             target: Some("http://cli-target".to_string()),
+            target_type: TargetType::Http,
             headers: vec!["Authorization: Bearer cli-token".to_string()],
             request_template: Some("{\"input\":{{payload}}}".to_string()),
             timeout_seconds: Some(7),
@@ -723,14 +748,42 @@ html_out = "./from-config.html"
         assert_eq!(resolved.retry_backoff_ms, 50);
         assert_eq!(resolved.max_concurrent, 3);
         assert_eq!(resolved.rate_limit_rps, 12);
-        assert_eq!(resolved.request_format.method, "POST");
         assert_eq!(
-            resolved.request_format.request_template,
+            resolved
+                .http
+                .as_ref()
+                .expect("http settings should exist")
+                .request_format
+                .method,
+            "POST"
+        );
+        assert_eq!(
+            resolved
+                .http
+                .as_ref()
+                .expect("http settings should exist")
+                .request_format
+                .request_template,
             "{\"input\":{{payload}}}"
         );
-        assert_eq!(resolved.request_format.response_path, None);
+        assert_eq!(
+            resolved
+                .http
+                .as_ref()
+                .expect("http settings should exist")
+                .request_format
+                .response_path,
+            None
+        );
         assert!(!resolved.redact_responses);
-        assert_eq!(resolved.headers, vec!["Authorization: Bearer cli-token"]);
+        assert_eq!(
+            resolved
+                .http
+                .as_ref()
+                .expect("http settings should exist")
+                .headers,
+            vec!["Authorization: Bearer cli-token"]
+        );
         assert_eq!(resolved.category.as_deref(), Some("custom-category"));
         assert!(resolved
             .json_out
@@ -749,6 +802,7 @@ html_out = "./from-config.html"
         let temp = tempdir().expect("tempdir should be created");
         let args = ScanArgs {
             target: Some("http://cli-target".to_string()),
+            target_type: TargetType::Http,
             headers: vec![],
             request_template: Some("{\"messages\":[]}".to_string()),
             timeout_seconds: None,
@@ -767,6 +821,72 @@ html_out = "./from-config.html"
 
         let error = resolve_scan_settings(&args).expect_err("invalid template should fail");
         assert!(error.to_string().contains("{{payload}}"));
+    }
+
+    #[test]
+    fn uses_openclaw_target_type_from_config_when_cli_type_is_default_http() {
+        let temp = tempdir().expect("tempdir should be created");
+        let config_path = temp.path().join(".agentprey.toml");
+        fs::write(
+            &config_path,
+            r#"
+[target]
+type = "openclaw"
+endpoint = "./fixture"
+"#,
+        )
+        .expect("config fixture should be written");
+
+        let args = ScanArgs {
+            target: None,
+            target_type: TargetType::Http,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: None,
+            retries: None,
+            retry_backoff_ms: None,
+            max_concurrent: None,
+            rate_limit_rps: None,
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: None,
+            category: None,
+            json_out: None,
+            html_out: None,
+            config: Some(config_path),
+        };
+
+        let resolved = resolve_scan_settings(&args).expect("settings should resolve");
+        assert_eq!(resolved.target_type, TargetType::Openclaw);
+        assert!(resolved.http.is_none());
+    }
+
+    #[test]
+    fn rejects_non_openclaw_category_for_openclaw_scans() {
+        let temp = tempdir().expect("tempdir should be created");
+        let args = ScanArgs {
+            target: Some(temp.path().display().to_string()),
+            target_type: TargetType::Openclaw,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: None,
+            retries: None,
+            retry_backoff_ms: None,
+            max_concurrent: None,
+            rate_limit_rps: None,
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: Some(temp.path().join("vectors")),
+            category: Some("prompt-injection".to_string()),
+            json_out: None,
+            html_out: None,
+            config: None,
+        };
+
+        let error = resolve_scan_settings(&args).expect_err("category should fail");
+        assert!(error
+            .to_string()
+            .contains("openclaw scans currently support category"));
     }
 
     #[test]
@@ -834,5 +954,44 @@ html_out = "./from-config.html"
         assert!(super::tier_allows_cached_pro_vectors(Some("PRO")));
         assert!(!super::tier_allows_cached_pro_vectors(Some("free")));
         assert!(!super::tier_allows_cached_pro_vectors(None));
+    }
+
+    #[test]
+    fn filters_vectors_to_openclaw_category_for_openclaw_target_without_explicit_category() {
+        let temp = tempdir().expect("tempdir should be created");
+        let root = temp.path().join("vectors");
+        write_vector(
+            &root,
+            "prompt-injection/direct/pi-001.yaml",
+            "pi-001",
+            "prompt-injection",
+        );
+        write_vector(
+            &root,
+            "openclaw/permissions/oc-001.yaml",
+            "oc-001",
+            OPENCLAW_VECTOR_CATEGORY,
+        );
+
+        let mut loaded = load_vectors_for_scan(&root, None).expect("vectors should load");
+        let settings = super::ResolvedScanSettings {
+            target_type: TargetType::Openclaw,
+            target: temp.path().display().to_string(),
+            http: None,
+            timeout_seconds: 30,
+            retries: 2,
+            retry_backoff_ms: 250,
+            max_concurrent: 2,
+            rate_limit_rps: 10,
+            redact_responses: true,
+            vectors_dir: root,
+            category: None,
+            json_out: None,
+            html_out: None,
+        };
+
+        filter_vectors_for_settings(&mut loaded, &settings);
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].vector.category, OPENCLAW_VECTOR_CATEGORY);
     }
 }

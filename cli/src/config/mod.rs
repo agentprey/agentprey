@@ -7,6 +7,8 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 
+use crate::cli::TargetType;
+
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ProjectConfig {
     #[serde(default)]
@@ -21,6 +23,8 @@ pub struct ProjectConfig {
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct TargetConfig {
+    #[serde(default, rename = "type")]
+    pub target_type: Option<TargetType>,
     pub endpoint: Option<String>,
     pub method: Option<String>,
     pub request_template: Option<String>,
@@ -83,6 +87,9 @@ pub fn write_default_config(path: &Path, force: bool) -> Result<()> {
 }
 
 pub const DEFAULT_CONFIG_TEMPLATE: &str = r#"[target]
+# Optional target type: http | openclaw
+# type = "http"
+
 # Required for config-driven scans
 endpoint = "http://127.0.0.1:8787/chat"
 method = "POST"
@@ -122,7 +129,10 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use crate::config::{load_project_config, write_default_config, DEFAULT_CONFIG_TEMPLATE};
+    use crate::{
+        cli::TargetType,
+        config::{load_project_config, write_default_config, DEFAULT_CONFIG_TEMPLATE},
+    };
 
     #[test]
     fn parses_valid_project_config() {
@@ -133,6 +143,7 @@ mod tests {
             &config_path,
             r#"
 [target]
+type = "openclaw"
 endpoint = "http://127.0.0.1:8787/chat"
 method = "PATCH"
 request_template = "{\"input\":{{payload}}}"
@@ -160,6 +171,10 @@ api_url = "https://custom-auth.example"
         .expect("config fixture should be written");
 
         let parsed = load_project_config(&config_path).expect("config should parse");
+        assert!(matches!(
+            parsed.target.target_type,
+            Some(TargetType::Openclaw)
+        ));
         assert_eq!(
             parsed.target.endpoint.as_deref(),
             Some("http://127.0.0.1:8787/chat")

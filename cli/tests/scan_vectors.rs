@@ -1,6 +1,8 @@
 use std::{fs, thread, time::Duration};
 
-use agentprey::cli::ScanArgs;
+mod test_support;
+
+use agentprey::cli::{ScanArgs, TargetType};
 use agentprey::scan::run_scan;
 use tempfile::tempdir;
 use tiny_http::{Header, Response, Server};
@@ -100,62 +102,70 @@ fn write_vector_set() -> (tempfile::TempDir, std::path::PathBuf) {
 
 #[tokio::test]
 async fn scan_uses_category_filter() {
-    let (_fixture_dir, vectors_dir) = write_vector_set();
-    let server = spawn_fixed_response_server(
-        r#"{"choices":[{"message":{"content":"My system prompt is available."}}]}"#,
-        1,
-    );
+    test_support::with_temp_agentprey_home(|_| async {
+        let (_fixture_dir, vectors_dir) = write_vector_set();
+        let server = spawn_fixed_response_server(
+            r#"{"choices":[{"message":{"content":"My system prompt is available."}}]}"#,
+            1,
+        );
 
-    let args = ScanArgs {
-        target: Some(format!("{}/chat", server.base_url)),
-        headers: vec![],
-        request_template: None,
-        timeout_seconds: Some(5),
-        retries: None,
-        retry_backoff_ms: None,
-        max_concurrent: None,
-        rate_limit_rps: None,
-        redact_responses: false,
-        no_redact_responses: false,
-        vectors_dir: Some(vectors_dir),
-        category: Some("prompt-injection".to_string()),
-        json_out: None,
-        html_out: None,
-        config: None,
-    };
+        let args = ScanArgs {
+            target: Some(format!("{}/chat", server.base_url)),
+            target_type: TargetType::Http,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: Some(5),
+            retries: None,
+            retry_backoff_ms: None,
+            max_concurrent: None,
+            rate_limit_rps: None,
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: Some(vectors_dir),
+            category: Some("prompt-injection".to_string()),
+            json_out: None,
+            html_out: None,
+            config: None,
+        };
 
-    let outcome = run_scan(&args).await.expect("scan should succeed");
-    assert_eq!(outcome.total_vectors, 1);
-    assert_eq!(outcome.vulnerable_count, 1);
+        let outcome = run_scan(&args).await.expect("scan should succeed");
+        assert_eq!(outcome.total_vectors, 1);
+        assert_eq!(outcome.vulnerable_count, 1);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn scan_runs_all_categories_when_unfiltered() {
-    let (_fixture_dir, vectors_dir) = write_vector_set();
-    let server = spawn_fixed_response_server(
-        r#"{"choices":[{"message":{"content":"My system prompt is available."}}]}"#,
-        2,
-    );
+    test_support::with_temp_agentprey_home(|_| async {
+        let (_fixture_dir, vectors_dir) = write_vector_set();
+        let server = spawn_fixed_response_server(
+            r#"{"choices":[{"message":{"content":"My system prompt is available."}}]}"#,
+            2,
+        );
 
-    let args = ScanArgs {
-        target: Some(format!("{}/chat", server.base_url)),
-        headers: vec![],
-        request_template: None,
-        timeout_seconds: Some(5),
-        retries: None,
-        retry_backoff_ms: None,
-        max_concurrent: None,
-        rate_limit_rps: None,
-        redact_responses: false,
-        no_redact_responses: false,
-        vectors_dir: Some(vectors_dir),
-        category: None,
-        json_out: None,
-        html_out: None,
-        config: None,
-    };
+        let args = ScanArgs {
+            target: Some(format!("{}/chat", server.base_url)),
+            target_type: TargetType::Http,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: Some(5),
+            retries: None,
+            retry_backoff_ms: None,
+            max_concurrent: None,
+            rate_limit_rps: None,
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: Some(vectors_dir),
+            category: None,
+            json_out: None,
+            html_out: None,
+            config: None,
+        };
 
-    let outcome = run_scan(&args).await.expect("scan should succeed");
-    assert_eq!(outcome.total_vectors, 2);
-    assert_eq!(outcome.vulnerable_count, 2);
+        let outcome = run_scan(&args).await.expect("scan should succeed");
+        assert_eq!(outcome.total_vectors, 2);
+        assert_eq!(outcome.vulnerable_count, 2);
+    })
+    .await;
 }

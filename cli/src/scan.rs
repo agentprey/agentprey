@@ -18,7 +18,7 @@ use crate::{
     analyzer::Analysis,
     auth,
     cli::{ScanArgs, TargetType},
-    config::{load_project_config, ProjectConfig},
+    config::{load_project_config, ProjectConfig, DEFAULT_PROJECT_CONFIG_FILE},
     http_target,
     scorer::{score_findings, ScoreSummary},
     targets::ResolvedTarget,
@@ -95,6 +95,33 @@ pub struct ResolvedScanSettings {
     pub html_out: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ScanSettingsInput {
+    pub target: Option<String>,
+    pub target_type: Option<TargetType>,
+    pub headers: Vec<String>,
+    pub method: Option<String>,
+    pub request_template: Option<String>,
+    pub response_path: Option<String>,
+    pub timeout_seconds: Option<u64>,
+    pub vectors_dir: Option<PathBuf>,
+    pub category: Option<String>,
+    pub json_out: Option<PathBuf>,
+    pub html_out: Option<PathBuf>,
+    pub config: Option<PathBuf>,
+    pub retries: Option<u32>,
+    pub retry_backoff_ms: Option<u64>,
+    pub max_concurrent: Option<usize>,
+    pub rate_limit_rps: Option<u32>,
+    pub redact_override: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ConfigLookup {
+    ExplicitOnly,
+    ExplicitOrDefaultPath,
+}
+
 impl ScanOutcome {
     pub fn has_vulnerabilities(&self) -> bool {
         self.vulnerable_count > 0
@@ -102,10 +129,153 @@ impl ScanOutcome {
 }
 
 pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
-    let config = load_config_for_scan(args)?;
-    let target_type = resolve_target_type(args, config.as_ref());
+    let input = ScanSettingsInput::from_scan_args(args);
+    resolve_scan_settings_internal(&input, ConfigLookup::ExplicitOnly)
+}
 
-    let target = args
+pub fn resolve_scan_settings_from_input(input: &ScanSettingsInput) -> Result<ResolvedScanSettings> {
+    resolve_scan_settings_internal(input, ConfigLookup::ExplicitOnly)
+}
+
+pub fn resolve_scan_settings_for_center(input: &ScanSettingsInput) -> Result<ResolvedScanSettings> {
+    resolve_scan_settings_internal(input, ConfigLookup::ExplicitOrDefaultPath)
+}
+
+pub fn seed_scan_settings_input_for_center(input: &ScanSettingsInput) -> Result<ScanSettingsInput> {
+    let config = load_config_for_input(input, ConfigLookup::ExplicitOrDefaultPath)?;
+    let target_type = resolve_target_type(input, config.as_ref());
+    let redact_responses = input
+        .redact_override
+        .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.redact_responses))
+        .unwrap_or(DEFAULT_REDACT_RESPONSES);
+
+    let method = if target_type == TargetType::Http {
+        Some(
+            input
+                .method
+                .clone()
+                .or_else(|| config.as_ref().and_then(|cfg| cfg.target.method.clone()))
+                .unwrap_or_else(|| http_target::DEFAULT_HTTP_METHOD.to_string()),
+        )
+    } else {
+        None
+    };
+
+    let request_template = if target_type == TargetType::Http {
+        Some(
+            input
+                .request_template
+                .clone()
+                .or_else(|| {
+                    config
+                        .as_ref()
+                        .and_then(|cfg| cfg.target.request_template.clone())
+                })
+                .unwrap_or_else(|| http_target::DEFAULT_REQUEST_TEMPLATE.to_string()),
+        )
+    } else {
+        None
+    };
+
+    let response_path = if target_type == TargetType::Http {
+        input
+            .response_path
+            .clone()
+            .or_else(|| {
+                config
+                    .as_ref()
+                    .and_then(|cfg| cfg.target.response_path.clone())
+            })
+            .and_then(|path| {
+                let trimmed = path.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            })
+    } else {
+        None
+    };
+
+    Ok(ScanSettingsInput {
+        target: input
+            .target
+            .clone()
+            .or_else(|| config.as_ref().and_then(|cfg| cfg.target.endpoint.clone())),
+        target_type: Some(target_type),
+        headers: if !input.headers.is_empty() {
+            input.headers.clone()
+        } else {
+            config_headers_as_vec(config.as_ref())
+        },
+        method,
+        request_template,
+        response_path,
+        timeout_seconds: Some(
+            input
+                .timeout_seconds
+                .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.timeout_seconds))
+                .unwrap_or(DEFAULT_TIMEOUT_SECONDS),
+        ),
+        vectors_dir: Some(
+            input
+                .vectors_dir
+                .clone()
+                .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.vectors_dir.clone()))
+                .unwrap_or_else(|| PathBuf::from(DEFAULT_VECTORS_DIR)),
+        ),
+        category: input
+            .category
+            .clone()
+            .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.category.clone())),
+        json_out: input
+            .json_out
+            .clone()
+            .or_else(|| config.as_ref().and_then(|cfg| cfg.output.json_out.clone())),
+        html_out: input
+            .html_out
+            .clone()
+            .or_else(|| config.as_ref().and_then(|cfg| cfg.output.html_out.clone())),
+        config: input.config.clone(),
+        retries: Some(
+            input
+                .retries
+                .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.retries))
+                .unwrap_or(DEFAULT_RETRIES),
+        ),
+        retry_backoff_ms: Some(
+            input
+                .retry_backoff_ms
+                .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.retry_backoff_ms))
+                .unwrap_or(DEFAULT_RETRY_BACKOFF_MS),
+        ),
+        max_concurrent: Some(
+            input
+                .max_concurrent
+                .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.max_concurrent))
+                .unwrap_or(DEFAULT_MAX_CONCURRENT)
+                .max(1),
+        ),
+        rate_limit_rps: Some(
+            input
+                .rate_limit_rps
+                .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.rate_limit_rps))
+                .unwrap_or(DEFAULT_RATE_LIMIT_RPS)
+                .max(1),
+        ),
+        redact_override: Some(redact_responses),
+    })
+}
+
+fn resolve_scan_settings_internal(
+    input: &ScanSettingsInput,
+    config_lookup: ConfigLookup,
+) -> Result<ResolvedScanSettings> {
+    let config = load_config_for_input(input, config_lookup)?;
+    let target_type = resolve_target_type(input, config.as_ref());
+
+    let target = input
         .target
         .clone()
         .or_else(|| config.as_ref().and_then(|cfg| cfg.target.endpoint.clone()))
@@ -115,69 +285,62 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
             )
         })?;
 
-    let timeout_seconds = args
+    let timeout_seconds = input
         .timeout_seconds
         .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.timeout_seconds))
         .unwrap_or(DEFAULT_TIMEOUT_SECONDS);
 
-    let retries = args
+    let retries = input
         .retries
         .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.retries))
         .unwrap_or(DEFAULT_RETRIES);
 
-    let retry_backoff_ms = args
+    let retry_backoff_ms = input
         .retry_backoff_ms
         .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.retry_backoff_ms))
         .unwrap_or(DEFAULT_RETRY_BACKOFF_MS);
 
-    let max_concurrent = args
+    let max_concurrent = input
         .max_concurrent
         .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.max_concurrent))
         .unwrap_or(DEFAULT_MAX_CONCURRENT)
         .max(1);
 
-    let rate_limit_rps = args
+    let rate_limit_rps = input
         .rate_limit_rps
         .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.rate_limit_rps))
         .unwrap_or(DEFAULT_RATE_LIMIT_RPS)
         .max(1);
 
-    let redact_override = if args.redact_responses {
-        Some(true)
-    } else if args.no_redact_responses {
-        Some(false)
-    } else {
-        None
-    };
-
-    let redact_responses = redact_override
+    let redact_responses = input
+        .redact_override
         .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.redact_responses))
         .unwrap_or(DEFAULT_REDACT_RESPONSES);
 
-    let vectors_dir = args
+    let vectors_dir = input
         .vectors_dir
         .clone()
         .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.vectors_dir.clone()))
         .unwrap_or_else(|| PathBuf::from(DEFAULT_VECTORS_DIR));
 
-    let category = args
+    let category = input
         .category
         .clone()
         .or_else(|| config.as_ref().and_then(|cfg| cfg.scan.category.clone()));
     validate_category_for_target(target_type, category.as_deref())?;
 
-    let json_out = args
+    let json_out = input
         .json_out
         .clone()
         .or_else(|| config.as_ref().and_then(|cfg| cfg.output.json_out.clone()));
 
-    let html_out = args
+    let html_out = input
         .html_out
         .clone()
         .or_else(|| config.as_ref().and_then(|cfg| cfg.output.html_out.clone()));
 
     let http = match target_type {
-        TargetType::Http => Some(resolve_http_scan_settings(args, config.as_ref())?),
+        TargetType::Http => Some(resolve_http_scan_settings(input, config.as_ref())?),
         TargetType::Openclaw => None,
     };
 
@@ -198,42 +361,30 @@ pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {
     })
 }
 
-fn resolve_target_type(args: &ScanArgs, config: Option<&ProjectConfig>) -> TargetType {
-    if args.target_type != TargetType::Http {
-        return args.target_type;
-    }
-
-    if cli_target_type_was_explicitly_set() {
-        return TargetType::Http;
-    }
-
-    config
-        .and_then(|cfg| cfg.target.target_type)
+fn resolve_target_type(input: &ScanSettingsInput, config: Option<&ProjectConfig>) -> TargetType {
+    input
+        .target_type
+        .or_else(|| config.and_then(|cfg| cfg.target.target_type))
         .unwrap_or(TargetType::Http)
 }
 
-fn cli_target_type_was_explicitly_set() -> bool {
-    env::args_os().any(|arg| {
-        let value = arg.to_string_lossy();
-        value == "--type" || value.starts_with("--type=")
-    })
-}
-
 fn resolve_http_scan_settings(
-    args: &ScanArgs,
+    input: &ScanSettingsInput,
     config: Option<&ProjectConfig>,
 ) -> Result<HttpScanSettings> {
-    let headers = if !args.headers.is_empty() {
-        args.headers.clone()
+    let headers = if !input.headers.is_empty() {
+        input.headers.clone()
     } else {
         config_headers_as_vec(config)
     };
 
-    let method = config
-        .and_then(|cfg| cfg.target.method.clone())
+    let method = input
+        .method
+        .clone()
+        .or_else(|| config.and_then(|cfg| cfg.target.method.clone()))
         .unwrap_or_else(|| http_target::DEFAULT_HTTP_METHOD.to_string());
 
-    let request_template = args
+    let request_template = input
         .request_template
         .clone()
         .or_else(|| config.and_then(|cfg| cfg.target.request_template.clone()))
@@ -241,8 +392,10 @@ fn resolve_http_scan_settings(
 
     http_target::validate_request_template(&request_template)?;
 
-    let response_path = config
-        .and_then(|cfg| cfg.target.response_path.clone())
+    let response_path = input
+        .response_path
+        .clone()
+        .or_else(|| config.and_then(|cfg| cfg.target.response_path.clone()))
         .and_then(|path| {
             let trimmed = path.trim();
             if trimmed.is_empty() {
@@ -503,16 +656,26 @@ impl RequestRateLimiter {
     }
 }
 
-fn load_config_for_scan(args: &ScanArgs) -> Result<Option<ProjectConfig>> {
-    let Some(path) = args.config.as_ref() else {
-        return Ok(None);
-    };
+fn load_config_for_input(
+    input: &ScanSettingsInput,
+    config_lookup: ConfigLookup,
+) -> Result<Option<ProjectConfig>> {
+    if let Some(path) = input.config.as_ref() {
+        if !path.exists() {
+            return Err(anyhow!("config file '{}' was not found", path.display()));
+        }
 
-    if !path.exists() {
-        return Err(anyhow!("config file '{}' was not found", path.display()));
+        return load_project_config(path).map(Some);
     }
 
-    load_project_config(path).map(Some)
+    if matches!(config_lookup, ConfigLookup::ExplicitOrDefaultPath) {
+        let default_path = PathBuf::from(DEFAULT_PROJECT_CONFIG_FILE);
+        if default_path.exists() {
+            return load_project_config(&default_path).map(Some);
+        }
+    }
+
+    Ok(None)
 }
 
 fn normalize_http_method(method: String) -> Result<String> {
@@ -522,6 +685,53 @@ fn normalize_http_method(method: String) -> Result<String> {
     }
 
     Ok(trimmed.to_ascii_uppercase())
+}
+
+impl ScanSettingsInput {
+    fn from_scan_args(args: &ScanArgs) -> Self {
+        let redact_override = if args.redact_responses {
+            Some(true)
+        } else if args.no_redact_responses {
+            Some(false)
+        } else {
+            None
+        };
+
+        Self {
+            target: args.target.clone(),
+            target_type: scan_args_target_type_override(args),
+            headers: args.headers.clone(),
+            method: None,
+            request_template: args.request_template.clone(),
+            response_path: None,
+            timeout_seconds: args.timeout_seconds,
+            vectors_dir: args.vectors_dir.clone(),
+            category: args.category.clone(),
+            json_out: args.json_out.clone(),
+            html_out: args.html_out.clone(),
+            config: args.config.clone(),
+            retries: args.retries,
+            retry_backoff_ms: args.retry_backoff_ms,
+            max_concurrent: args.max_concurrent,
+            rate_limit_rps: args.rate_limit_rps,
+            redact_override,
+        }
+    }
+}
+
+fn scan_args_target_type_override(args: &ScanArgs) -> Option<TargetType> {
+    if args.target_type != TargetType::Http {
+        return Some(args.target_type);
+    }
+
+    if env::args_os().any(|arg| {
+        let value = arg.to_string_lossy();
+        value == "--type" || value.starts_with("--type=")
+    }) {
+        Some(TargetType::Http)
+    } else {
+        None
+    }
 }
 
 fn config_headers_as_vec(config: Option<&ProjectConfig>) -> Vec<String> {
@@ -549,7 +759,8 @@ mod tests {
         cli::{ScanArgs, ScanUi, TargetType},
         scan::{
             filter_vectors_for_settings, load_vectors_for_scan, resolve_scan_settings,
-            OPENCLAW_VECTOR_CATEGORY,
+            resolve_scan_settings_from_input, seed_scan_settings_input_for_center,
+            ScanSettingsInput, OPENCLAW_VECTOR_CATEGORY,
         },
     };
 
@@ -1003,5 +1214,142 @@ endpoint = "./fixture"
         filter_vectors_for_settings(&mut loaded, &settings);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].vector.category, OPENCLAW_VECTOR_CATEGORY);
+    }
+
+    #[test]
+    fn center_seed_prefills_from_explicit_config() {
+        let temp = tempdir().expect("tempdir should be created");
+        let config_path = temp.path().join(".agentprey.toml");
+        fs::write(
+            &config_path,
+            r#"
+[target]
+endpoint = "http://127.0.0.1:8787/chat"
+method = "patch"
+request_template = "{\"input\":{{payload}}}"
+response_path = "/result/text"
+headers = { Authorization = "Bearer seed-token" }
+
+[scan]
+timeout_seconds = 18
+retries = 4
+retry_backoff_ms = 600
+max_concurrent = 3
+rate_limit_rps = 7
+vectors_dir = "./seed-vectors"
+category = "prompt-injection"
+redact_responses = false
+
+[output]
+json_out = "./seed.json"
+html_out = "./seed.html"
+"#,
+        )
+        .expect("config fixture should be written");
+
+        let seeded = seed_scan_settings_input_for_center(&ScanSettingsInput {
+            config: Some(config_path),
+            ..ScanSettingsInput::default()
+        })
+        .expect("center seed should resolve");
+
+        assert_eq!(seeded.target.as_deref(), Some("http://127.0.0.1:8787/chat"));
+        assert_eq!(seeded.target_type, Some(TargetType::Http));
+        assert_eq!(seeded.method.as_deref(), Some("patch"));
+        assert_eq!(
+            seeded.request_template.as_deref(),
+            Some("{\"input\":{{payload}}}")
+        );
+        assert_eq!(seeded.response_path.as_deref(), Some("/result/text"));
+        assert_eq!(seeded.headers, vec!["Authorization: Bearer seed-token"]);
+        assert_eq!(seeded.timeout_seconds, Some(18));
+        assert_eq!(seeded.retries, Some(4));
+        assert_eq!(seeded.retry_backoff_ms, Some(600));
+        assert_eq!(seeded.max_concurrent, Some(3));
+        assert_eq!(seeded.rate_limit_rps, Some(7));
+        assert_eq!(seeded.redact_override, Some(false));
+        assert_eq!(seeded.category.as_deref(), Some("prompt-injection"));
+        assert!(seeded
+            .vectors_dir
+            .as_ref()
+            .expect("vectors dir should exist")
+            .ends_with("seed-vectors"));
+        assert!(seeded
+            .json_out
+            .as_ref()
+            .expect("json path should exist")
+            .ends_with("seed.json"));
+        assert!(seeded
+            .html_out
+            .as_ref()
+            .expect("html path should exist")
+            .ends_with("seed.html"));
+    }
+
+    #[test]
+    fn center_seed_prefers_explicit_values_over_config() {
+        let temp = tempdir().expect("tempdir should be created");
+        let config_path = temp.path().join(".agentprey.toml");
+        fs::write(
+            &config_path,
+            r#"
+[target]
+type = "openclaw"
+endpoint = "./config-target"
+
+[scan]
+timeout_seconds = 18
+"#,
+        )
+        .expect("config fixture should be written");
+
+        let seeded = seed_scan_settings_input_for_center(&ScanSettingsInput {
+            target: Some("http://cli-target".to_string()),
+            target_type: Some(TargetType::Http),
+            timeout_seconds: Some(42),
+            category: Some("goal-hijacking".to_string()),
+            config: Some(config_path),
+            ..ScanSettingsInput::default()
+        })
+        .expect("center seed should resolve");
+
+        assert_eq!(seeded.target.as_deref(), Some("http://cli-target"));
+        assert_eq!(seeded.target_type, Some(TargetType::Http));
+        assert_eq!(seeded.timeout_seconds, Some(42));
+        assert_eq!(seeded.category.as_deref(), Some("goal-hijacking"));
+    }
+
+    #[test]
+    fn center_runs_use_form_values_without_reloading_config_defaults() {
+        let temp = tempdir().expect("tempdir should be created");
+        let config_path = temp.path().join(".agentprey.toml");
+        fs::write(
+            &config_path,
+            r#"
+[target]
+endpoint = "http://127.0.0.1:8787/chat"
+
+[scan]
+vectors_dir = "vectors"
+category = "prompt-injection"
+
+[output]
+json_out = "./from-config.json"
+"#,
+        )
+        .expect("config fixture should be written");
+
+        let mut seeded = seed_scan_settings_input_for_center(&ScanSettingsInput {
+            config: Some(config_path),
+            ..ScanSettingsInput::default()
+        })
+        .expect("center seed should resolve");
+
+        seeded.config = None;
+        seeded.json_out = None;
+
+        let resolved = resolve_scan_settings_from_input(&seeded)
+            .expect("form-derived settings should resolve");
+        assert!(resolved.json_out.is_none());
     }
 }

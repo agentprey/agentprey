@@ -9,6 +9,8 @@ use serde::Deserialize;
 
 use crate::cli::TargetType;
 
+pub const DEFAULT_PROJECT_CONFIG_FILE: &str = ".agentprey.toml";
+
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ProjectConfig {
     #[serde(default)]

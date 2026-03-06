@@ -9,6 +9,7 @@ use std::path::PathBuf;
     after_help = r#"Examples:
   agentprey scan --target https://my-agent.com/api
   agentprey scan --target https://my-agent.com/api --category prompt-injection
+  agentprey center --target https://my-agent.com/api
   agentprey scan --type openclaw --target ./some-openclaw-project
   agentprey scan --target https://my-agent.com/api --request-template '{"input": "{{payload}}"}'
   agentprey auth activate --key <your_api_key>
@@ -29,6 +30,9 @@ pub enum Commands {
 
     /// Run a security scan against a target endpoint. Use --target to specify the URL, --category to filter vectors, --request-template for custom agent formats
     Scan(Box<ScanArgs>),
+
+    /// Open the interactive control center for configuring and running scans
+    Center(Box<CenterArgs>),
 
     /// List, inspect, and sync attack vectors. Use 'vectors list' to see available vectors, 'vectors sync --pro' to download Pro vectors
     Vectors(VectorsArgs),
@@ -54,6 +58,8 @@ pub enum TargetType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum ScanUi {
+    #[value(hide = true)]
+    Auto,
     Plain,
     Tui,
 }
@@ -128,9 +134,36 @@ pub struct ScanArgs {
     #[arg(long, default_value_t = false, conflicts_with = "redact_responses")]
     pub no_redact_responses: bool,
 
-    /// Scan output mode
-    #[arg(long, value_enum, default_value_t = ScanUi::Plain)]
+    /// Scan output mode. Defaults to TUI in interactive terminals and plain mode otherwise.
+    #[arg(long, value_enum, default_value_t = ScanUi::Auto, hide_default_value = true)]
     pub ui: ScanUi,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct CenterArgs {
+    /// Optional target HTTP endpoint URL or local OpenClaw project path
+    #[arg(long)]
+    pub target: Option<String>,
+
+    /// Optional target type seed for the control center
+    #[arg(long = "type", value_enum)]
+    pub target_type: Option<TargetType>,
+
+    /// Optional initial category filter
+    #[arg(long)]
+    pub category: Option<String>,
+
+    /// Optional initial vectors directory
+    #[arg(long)]
+    pub vectors_dir: Option<PathBuf>,
+
+    /// Upload the completed scan artifact to the AgentPrey cloud
+    #[arg(long, default_value_t = false)]
+    pub upload: bool,
+
+    /// Optional path to project config TOML
+    #[arg(long)]
+    pub config: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Args)]

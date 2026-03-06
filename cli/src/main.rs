@@ -12,17 +12,17 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 use agentprey::{
     auth::{self, CacheStaleness},
-    cli::{AuthCommands, Cli, Commands, ScanUi, VectorsCommands, VectorsListArgs},
+    cli::{AuthCommands, CenterArgs, Cli, Commands, ScanUi, VectorsCommands, VectorsListArgs},
     cloud::upload_scan_run,
     config::write_default_config,
     output::html::write_scan_html,
     output::json::write_scan_json,
     scan::{
         count_vectors_for_settings, resolve_scan_settings, run_scan_with_settings_with_reporter,
-        FindingOutcome, FindingStatus, ResolvedScanSettings, ScanOutcome,
+        FindingOutcome, FindingStatus, ResolvedScanSettings, ScanOutcome, ScanSettingsInput,
     },
     scorer::Grade,
-    tui::run_scan_with_tui,
+    tui::{run_control_center_with_tui, run_scan_with_tui},
     vectors::{
         catalog::list_vectors,
         model::Severity,
@@ -122,12 +122,13 @@ async fn main() -> ExitCode {
             },
         },
         Commands::Scan(args) => {
-            let ui = args.ui;
+            let ui = resolve_scan_ui(args.ui, is_interactive_output());
             let upload = args.upload;
             match resolve_scan_settings(args.as_ref()) {
                 Ok(settings) => match ui {
                     ScanUi::Plain => run_plain_scan(&settings, upload).await,
                     ScanUi::Tui => run_tui_scan(&settings, upload).await,
+                    ScanUi::Auto => unreachable!("scan UI should be resolved before execution"),
                 },
                 Err(error) => {
                     eprintln!("{} {error}", "error:".red().bold());
@@ -135,6 +136,7 @@ async fn main() -> ExitCode {
                 }
             }
         }
+        Commands::Center(args) => run_center(args.as_ref()).await,
         Commands::Vectors(args) => match args.command {
             VectorsCommands::List(list_args) => match render_vectors_list(&list_args) {
                 Ok(()) => ExitCode::from(0),
@@ -203,8 +205,19 @@ async fn run_plain_scan(settings: &ResolvedScanSettings, upload: bool) -> ExitCo
 }
 
 async fn run_tui_scan(settings: &ResolvedScanSettings, upload: bool) -> ExitCode {
-    match run_scan_with_tui(settings).await {
+    match run_scan_with_tui(settings, upload).await {
         Ok(outcome) => finalize_scan_success(settings, &outcome, upload).await,
+        Err(error) => {
+            eprintln!("{} {error}", "error:".red().bold());
+            ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR)
+        }
+    }
+}
+
+async fn run_center(args: &CenterArgs) -> ExitCode {
+    let input = center_args_to_scan_input(args);
+    match run_control_center_with_tui(&input, args.upload).await {
+        Ok(code) => ExitCode::from(code),
         Err(error) => {
             eprintln!("{} {error}", "error:".red().bold());
             ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR)
@@ -268,6 +281,31 @@ fn configure_color_output() {
 
 fn is_interactive_output() -> bool {
     io::stdout().is_terminal() && io::stderr().is_terminal()
+}
+
+fn resolve_scan_ui(requested_ui: ScanUi, interactive: bool) -> ScanUi {
+    match requested_ui {
+        ScanUi::Auto => {
+            if interactive {
+                ScanUi::Tui
+            } else {
+                ScanUi::Plain
+            }
+        }
+        ScanUi::Plain => ScanUi::Plain,
+        ScanUi::Tui => ScanUi::Tui,
+    }
+}
+
+fn center_args_to_scan_input(args: &CenterArgs) -> ScanSettingsInput {
+    ScanSettingsInput {
+        target: args.target.clone(),
+        target_type: args.target_type,
+        vectors_dir: args.vectors_dir.clone(),
+        category: args.category.clone(),
+        config: args.config.clone(),
+        ..ScanSettingsInput::default()
+    }
 }
 
 fn render_vectors_list(args: &VectorsListArgs) -> anyhow::Result<()> {
@@ -544,8 +582,9 @@ fn format_age(age_seconds: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::scan_exit_code;
+    use super::{resolve_scan_ui, scan_exit_code};
     use agentprey::{
+        cli::ScanUi,
         scan::ScanOutcome,
         scorer::{Grade, ScoreSummary, SeverityCounts},
     };
@@ -594,5 +633,21 @@ mod tests {
             scan_exit_code(&outcome(1, 1)),
             std::process::ExitCode::from(2)
         );
+    }
+
+    #[test]
+    fn auto_scan_ui_uses_tui_for_interactive_terminals() {
+        assert_eq!(resolve_scan_ui(ScanUi::Auto, true), ScanUi::Tui);
+    }
+
+    #[test]
+    fn auto_scan_ui_uses_plain_for_non_interactive_terminals() {
+        assert_eq!(resolve_scan_ui(ScanUi::Auto, false), ScanUi::Plain);
+    }
+
+    #[test]
+    fn explicit_scan_ui_overrides_auto_selection() {
+        assert_eq!(resolve_scan_ui(ScanUi::Plain, true), ScanUi::Plain);
+        assert_eq!(resolve_scan_ui(ScanUi::Tui, false), ScanUi::Tui);
     }
 }

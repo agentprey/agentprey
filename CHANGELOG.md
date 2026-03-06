@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## v0.1.5
+
+### Added
+
+- Added `agentprey center` as a public interactive control center for configuring and launching scans
+- Added shared scan-input/config seeding so `scan` and `center` resolve the same runtime settings
+- Added `agentprey.scan.v1` downstream contract documentation and a contract-lock integration test
+
+### Changed
+
+- Interactive `scan` now defaults to the TUI automatically while non-interactive output remains plain for CI/CD
+- The main scan TUI now uses a single operator-console layout with stronger completion-state handling
+- README now documents the control-center flow alongside the direct scan flow
+
 ## v0.1.4
 
 ### Added

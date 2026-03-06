@@ -8,6 +8,7 @@ This repository contains the current AgentPrey CLI:
 - HTTP endpoint scans with YAML-defined prompt-injection vectors
 - Local-path OpenClaw scans with `--type openclaw`
 - Plain terminal and `--ui tui` scan output modes
+- Interactive control center with `agentprey center`
 - JSON and HTML artifacts for automation and human review
 - API-key authenticated upload of completed scan runs with optional share links
 - Config + CLI merged scan settings (CLI flags override config)
@@ -102,6 +103,22 @@ agentprey scan \
   --category prompt-injection \
   --ui tui
 ```
+
+### Control center
+
+Use the control center when you want to configure and launch a scan from inside
+the terminal app instead of starting directly in a running scan view:
+
+```bash
+agentprey center
+agentprey center --target http://127.0.0.1:8787/chat --upload
+```
+
+Control-center notes:
+
+- `agentprey center` is interactive-only and errors cleanly on non-TTY output.
+- It pre-fills from `--config` or `.agentprey.toml` when available.
+- It keeps plain `scan` mode unchanged for CI/CD and automation.
 
 ### Pro auth and upload/share
 

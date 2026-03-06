@@ -47,7 +47,7 @@ pub async fn run_scan_with_tui(settings: &ResolvedScanSettings) -> Result<ScanOu
                 let _ = tx.send(TuiEvent::Started { total });
             },
             |finding| {
-                let _ = tx.send(TuiEvent::Finding(finding.clone()));
+                let _ = tx.send(TuiEvent::Finding(Box::new(finding.clone())));
             },
         )
         .await
@@ -183,7 +183,7 @@ impl Drop for TuiTerminal {
 #[derive(Debug)]
 enum TuiEvent {
     Started { total: usize },
-    Finding(FindingOutcome),
+    Finding(Box<FindingOutcome>),
 }
 
 #[derive(Debug, Clone)]
@@ -249,7 +249,7 @@ impl TuiState {
             TuiEvent::Started { total } => {
                 self.total_vectors = total;
             }
-            TuiEvent::Finding(finding) => self.push_finding(finding),
+            TuiEvent::Finding(finding) => self.push_finding(*finding),
         }
     }
 
@@ -616,9 +616,18 @@ mod tests {
     fn state_accumulates_counts_from_findings() {
         let mut state = TuiState::new(&settings());
         state.apply_event(TuiEvent::Started { total: 3 });
-        state.apply_event(TuiEvent::Finding(finding(1, FindingStatus::Vulnerable)));
-        state.apply_event(TuiEvent::Finding(finding(2, FindingStatus::Resistant)));
-        state.apply_event(TuiEvent::Finding(finding(3, FindingStatus::Error)));
+        state.apply_event(TuiEvent::Finding(Box::new(finding(
+            1,
+            FindingStatus::Vulnerable,
+        ))));
+        state.apply_event(TuiEvent::Finding(Box::new(finding(
+            2,
+            FindingStatus::Resistant,
+        ))));
+        state.apply_event(TuiEvent::Finding(Box::new(finding(
+            3,
+            FindingStatus::Error,
+        ))));
 
         assert_eq!(state.total_vectors, 3);
         assert_eq!(state.completed_vectors, 3);
@@ -632,7 +641,10 @@ mod tests {
         let mut state = TuiState::new(&settings());
 
         for id in 0..(MAX_RECENT_FINDINGS + 3) {
-            state.apply_event(TuiEvent::Finding(finding(id, FindingStatus::Resistant)));
+            state.apply_event(TuiEvent::Finding(Box::new(finding(
+                id,
+                FindingStatus::Resistant,
+            ))));
         }
 
         let recent = state
@@ -654,7 +666,10 @@ mod tests {
     fn progress_ratio_uses_completed_and_total_vectors() {
         let mut state = TuiState::new(&settings());
         state.apply_event(TuiEvent::Started { total: 4 });
-        state.apply_event(TuiEvent::Finding(finding(1, FindingStatus::Resistant)));
+        state.apply_event(TuiEvent::Finding(Box::new(finding(
+            1,
+            FindingStatus::Resistant,
+        ))));
 
         assert!((state.progress_ratio() - 0.25).abs() < f64::EPSILON);
     }
@@ -662,8 +677,14 @@ mod tests {
     #[test]
     fn provisional_score_updates_from_completed_findings() {
         let mut state = TuiState::new(&settings());
-        state.apply_event(TuiEvent::Finding(finding(1, FindingStatus::Vulnerable)));
-        state.apply_event(TuiEvent::Finding(finding(2, FindingStatus::Resistant)));
+        state.apply_event(TuiEvent::Finding(Box::new(finding(
+            1,
+            FindingStatus::Vulnerable,
+        ))));
+        state.apply_event(TuiEvent::Finding(Box::new(finding(
+            2,
+            FindingStatus::Resistant,
+        ))));
 
         assert_eq!(state.score.score, 90);
         assert_eq!(state.score.grade, Grade::B);

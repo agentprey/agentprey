@@ -1,41 +1,49 @@
 # Release Checklist
 
-Use this checklist before publishing any beta tag.
+Use this checklist before publishing any beta tag or calling a release candidate credible.
 
-## Preflight
+## Automated verification
 
 - [ ] `cargo fmt --manifest-path cli/Cargo.toml --all --check`
 - [ ] `cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings`
 - [ ] `cargo test --manifest-path cli/Cargo.toml`
 - [ ] `bash scripts/beta_smoke.sh`
+- [ ] `bash scripts/openclaw_smoke.sh`
+- [ ] `bash scripts/release_candidate_smoke.sh`
+- [ ] Upload/share smoke decision is explicit:
+  Run with `AGENTPREY_UPLOAD_SMOKE=1 AGENTPREY_API_KEY=... AGENTPREY_API_URL=... bash scripts/release_candidate_smoke.sh`
+  or record an intentional skip for this release candidate.
 
-## Artifacts
+## Manual product QA
 
-- [ ] Confirm `release.yml` matrix includes Linux, macOS, and Windows targets
-- [ ] Confirm release archives are uploaded from GitHub Actions
-- [ ] Confirm checksums or archive names match expected target triples
+- [ ] Replay demo page QA (`agentprey-web /scan`)
+- [ ] Checkout success claim QA (`agentprey-web /checkout/success`)
+- [ ] Recovery flow QA (`agentprey-web /recover`)
+- [ ] Direct share link QA (`agentprey-web /reports/[share_id]`)
+- [ ] TUI manual screenshot check from a real CLI scan
+- [ ] HTTP scan artifact spot-check (`scan.json`, `scan.html`)
+- [ ] OpenClaw local-path scan artifact spot-check
 
-## Docs
+## Docs and release notes
 
-- [ ] README install and quick verification steps are current
-- [ ] `CHANGELOG.md` includes current beta notes
+- [ ] README install and quickstart steps are current
 - [ ] `docs/known-limitations.md` reflects current scope
+- [ ] Release notes include upload/share behavior and limitations
+- [ ] Release notes include upgrade command: `cargo install agentprey --locked --force`
+- [ ] Release notes include rollback guidance: `cargo install agentprey --locked --version <version> --force`
 
-## Publish
+## Packaging and publish
 
+- [ ] Confirm release workflow still builds Linux, macOS, and Windows artifacts
+- [ ] Confirm release archives and checksums match expected target triples
 - [ ] Tag release candidate (`v0.1.0-beta.x`) or stable (`v0.1.0`)
 - [ ] Confirm prerelease behavior (`v*` with `-` publishes prerelease, stable tags publish full release)
-- [ ] Create release notes and artifact links
-- [ ] Open beta feedback issue and pin it in repository
+- [ ] Open or refresh the beta feedback issue and pin it in the repository
 
-## Crates.io Rollout
+## Crates.io rollout
 
-- [ ] Bump version in `cli/Cargo.toml` and update `CHANGELOG.md`
+- [ ] Bump version in `cli/Cargo.toml`
+- [ ] Update `CHANGELOG.md`
 - [ ] Run `Publish Crate` workflow with `dry_run=true`
 - [ ] Re-run `Publish Crate` workflow with `dry_run=false` after approval
 - [ ] Verify published metadata with `cargo info agentprey`
-
-## User Upgrade Path
-
-- [ ] Add update command to release notes: `cargo install agentprey --locked --force`
-- [ ] Add pinned version command for rollback guidance: `cargo install agentprey --locked --version <version> --force`

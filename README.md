@@ -2,23 +2,19 @@
 
 `agentprey` is a developer-first security scanner for AI agents.
 
-This repository contains the current agentprey CLI:
+This repository contains the current AgentPrey CLI:
 
-- Rust CLI with `scan` and `vectors list` commands
-- Project config initialization via `init`
-- Local auth commands with live entitlement refresh (`auth activate`, `auth status`, `auth refresh`, `auth logout`)
-- Pro vector sync entitlement gating via `vectors sync --pro`
-- HTTP endpoint testing with YAML-defined prompt-injection vectors
-- Config + CLI merged scan settings (CLI overrides config)
-- Category filtering for vector listing and scans
-- Per-vector terminal output with confidence and indicator matches
-- JSON artifact output via `--json-out`
-- HTML artifact output via `--html-out`
-- Retry/backoff, rate limiting, and bounded concurrency controls
-- Response redaction defaults to on
-- Meaningful exit codes
+- Rust CLI with `scan`, `init`, `auth`, and `vectors` commands
+- HTTP endpoint scans with YAML-defined prompt-injection vectors
+- Local-path OpenClaw scans with `--type openclaw`
+- Plain terminal and `--ui tui` scan output modes
+- JSON and HTML artifacts for automation and human review
+- API-key authenticated upload of completed scan runs with optional share links
+- Config + CLI merged scan settings (CLI flags override config)
+- Retry/backoff, rate limiting, bounded concurrency, and response redaction
+- Stable exit codes for CI and release gating
 
-## Install and verify (15 minutes)
+## Install and verify
 
 Option A: use a GitHub release binary.
 
@@ -28,6 +24,7 @@ Option A: use a GitHub release binary.
 
 # 2) run from the extracted directory
 ./agentprey --help
+./agentprey scan --help
 ./agentprey init
 ```
 
@@ -36,6 +33,7 @@ Option B: install from crates.io.
 ```bash
 cargo install agentprey --locked
 agentprey --help
+agentprey scan --help
 agentprey init
 ```
 
@@ -45,7 +43,7 @@ Update an existing crates.io install:
 cargo install agentprey --locked --force
 ```
 
-Install a specific version (for rollback or pinning):
+Install a specific version:
 
 ```bash
 cargo install agentprey --locked --version <version> --force
@@ -58,23 +56,13 @@ git clone https://github.com/agentprey/agentprey.git
 cd agentprey
 cargo build --manifest-path cli/Cargo.toml --release
 ./cli/target/release/agentprey --help
+./cli/target/release/agentprey scan --help
+./cli/target/release/agentprey init
 ```
 
-Verification steps:
+## Quickstart
 
-```bash
-# fast baseline check
-bash scripts/beta_smoke.sh
-
-# manual run with artifacts
-agentprey scan \
-  --target http://127.0.0.1:8787/chat \
-  --category prompt-injection \
-  --json-out ./scan.json \
-  --html-out ./scan.html
-```
-
-## Quickstart (repo workflow)
+### HTTP endpoint scan
 
 Start a local mock target:
 
@@ -82,105 +70,108 @@ Start a local mock target:
 python3 scripts/mock_agent.py --mode vulnerable --port 8787
 ```
 
-Inspect available vectors:
+Run a baseline HTTP scan with artifacts:
 
 ```bash
-cargo run --manifest-path cli/Cargo.toml -- vectors list --category prompt-injection
+agentprey scan \
+  --target http://127.0.0.1:8787/chat \
+  --category prompt-injection \
+  --json-out ./scan.json \
+  --html-out ./scan.html
 ```
 
-Generate a default project config:
+### OpenClaw local-path scan
+
+Point AgentPrey at a checked-out local OpenClaw project:
 
 ```bash
-cargo run --manifest-path cli/Cargo.toml -- init
-cargo run --manifest-path cli/Cargo.toml -- auth activate --key apy_example_key
-cargo run --manifest-path cli/Cargo.toml -- auth status
-cargo run --manifest-path cli/Cargo.toml -- auth refresh
-cargo run --manifest-path cli/Cargo.toml -- vectors sync --pro
-cargo run --manifest-path cli/Cargo.toml -- auth logout
+agentprey scan \
+  --type openclaw \
+  --target ./path/to/openclaw-project
 ```
 
-Entitlement API defaults to `https://brilliant-meerkat-569.convex.site/api/entitlement`.
-Override with `AGENTPREY_API_URL` or `.agentprey.toml`:
+OpenClaw scans use a local project path, not a URL.
+
+### TUI mode
+
+Use the terminal UI when you want live progress and the final report in the terminal:
+
+```bash
+agentprey scan \
+  --target http://127.0.0.1:8787/chat \
+  --category prompt-injection \
+  --ui tui
+```
+
+### Pro auth and upload/share
+
+Activate your key and sync Pro vectors:
+
+```bash
+agentprey auth activate --key <KEY>
+agentprey auth status
+agentprey auth refresh
+agentprey vectors sync --pro
+```
+
+Upload a completed scan:
+
+```bash
+agentprey scan \
+  --type openclaw \
+  --target ./path/to/openclaw-project \
+  --upload
+```
+
+Successful uploads print `scan_run_id` and `share_id`. If the backend is configured with `APP_BASE_URL`, the CLI also prints `share_url`, which resolves to `/reports/<share_id>`.
+
+Entitlement and upload requests default to `https://brilliant-meerkat-569.convex.site`. Override with `AGENTPREY_API_URL` or `.agentprey.toml`:
 
 ```toml
 [auth]
 api_url = "https://your-convex-host.convex.site"
 ```
 
-Run the scanner:
+### Config-driven scan
+
+Generate a default config file:
 
 ```bash
-cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/chat --category prompt-injection
+agentprey init
 ```
 
-Run from config file defaults:
+Run from config defaults:
 
 ```bash
-cargo run --manifest-path cli/Cargo.toml -- scan --config .agentprey.toml
+agentprey scan --config .agentprey.toml
 ```
 
-Write JSON output for CI or scripting:
+### Calibration sanity check
 
-```bash
-cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/chat --category prompt-injection --json-out ./scan.json
-```
-
-Write HTML output for sharing reports:
-
-```bash
-cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/chat --category prompt-injection --html-out ./scan.html
-```
-
-Tune resilience controls from CLI flags:
-
-```bash
-cargo run --manifest-path cli/Cargo.toml -- scan \
-  --target http://127.0.0.1:8787/chat \
-  --category prompt-injection \
-  --retries 2 \
-  --retry-backoff-ms 250 \
-  --max-concurrent 2 \
-  --rate-limit-rps 10
-```
-
-Try a resistant mock:
-
-```bash
-python3 scripts/mock_agent.py --mode resistant --port 8787
-cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/chat --category prompt-injection
-```
-
-## Calibration sanity check
-
-- Vulnerable mock should produce mostly or fully vulnerable findings.
-- Resistant mock should stay resistant with near-zero false positives.
-
-You can run both checks quickly:
+Vulnerable mode should produce findings. Resistant mode should stay near-zero false positives.
 
 ```bash
 # vulnerable baseline
 python3 scripts/mock_agent.py --mode vulnerable --port 8787
-cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/chat --category prompt-injection
+agentprey scan --target http://127.0.0.1:8787/chat --category prompt-injection
 
 # resistant baseline
 python3 scripts/mock_agent.py --mode resistant --port 8787
-cargo run --manifest-path cli/Cargo.toml -- scan --target http://127.0.0.1:8787/chat --category prompt-injection
+agentprey scan --target http://127.0.0.1:8787/chat --category prompt-injection
 ```
 
 ## CI/CD usage
 
-`agentprey` is CI-friendly because it returns stable exit codes:
+`agentprey` returns stable exit codes:
 
 - `0` for clean scans
 - `1` for vulnerabilities detected
-- `2` for runtime/tooling errors
+- `2` for runtime/tooling errors, including scan runtime failures and explicit upload failures
 
-That behavior makes it compatible with GitHub Actions and any CI system that gates builds on process exit status.
-
-Example GitHub Actions workflow:
+### HTTP endpoint CI example
 
 ```yaml
-name: AgentPrey Scan
+name: AgentPrey HTTP Scan
 
 on:
   pull_request:
@@ -199,7 +190,7 @@ jobs:
       - name: Install agentprey
         run: cargo install agentprey --locked
 
-      - name: Run scan and gate build
+      - name: Run HTTP scan and gate build
         env:
           TARGET_URL: ${{ secrets.AGENTPREY_TARGET_URL }}
         run: |
@@ -216,26 +207,64 @@ jobs:
           exit "$exit_code"
 ```
 
-## Exit codes
+### OpenClaw CI example
 
-- `0`: no vulnerabilities found
-- `1`: one or more vulnerabilities detected
-- `2`: runtime/tooling error
+Use a checked-out local project path from the repository workspace:
+
+```yaml
+name: AgentPrey OpenClaw Scan
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  openclaw-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install agentprey
+        run: cargo install agentprey --locked
+
+      - name: Run OpenClaw scan and gate build
+        run: |
+          set +e
+          agentprey scan \
+            --type openclaw \
+            --target ./path/to/openclaw-project
+          exit_code=$?
+          set -e
+
+          if [ "$exit_code" -eq 1 ]; then
+            echo "agentprey found vulnerabilities"
+            exit 1
+          fi
+
+          exit "$exit_code"
+```
 
 ## Current limitations
 
-- HTTP target only
-- Single-turn payload execution (first payload per vector)
-- Prompt-injection vectors only (21 vectors)
+- The marketing site on Vercel does not run live scans. It only hosts docs, checkout/recovery flows, replay demos, and public share pages for uploaded artifacts.
+- There is no browser dashboard or full web auth/product loop yet. Cloud support is currently upload plus public-by-link report viewing.
+- There is no MCP adapter in the shipped product.
+- Telemetry is off by default.
+- OpenClaw scans require a local checked-out project path.
+- Share pages are artifact-driven. They do not provide edit controls, dashboards, or trend views.
 
 ## Notes
 
 - Default `max_concurrent` is `2`.
 - Response redaction is enabled by default. Use `--no-redact-responses` to disable.
 - Config output defaults can include both `json_out` and `html_out` under `[output]`.
-- The crates.io package bundles free vectors, so `cargo install agentprey` works without cloning the repo.
+- The crates.io package bundles the free vector set, so `cargo install agentprey --locked` works without cloning the repo.
 
-## Beta feedback
+## Feedback
 
 - Bug reports: `https://github.com/agentprey/agentprey/issues/new?template=bug-report.md`
 - False-positive reports: `https://github.com/agentprey/agentprey/issues/new?template=false-positive-report.md`

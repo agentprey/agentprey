@@ -1,26 +1,21 @@
-# Known Limitations (Beta)
+# Known Limitations
 
-These limitations are expected in `v0.1.0-beta` and are tracked for post-beta work.
+These limits reflect the shipped product after the current upload and share-link work.
 
-## Scope Limits
+## Product surface
 
-- HTTP endpoint scanning only
-- Prompt-injection vectors only
-- Single-turn execution path (first payload per vector)
+- The website on Vercel does not run live scans. It hosts docs, checkout/recovery flows, replay demos, and public share pages for uploaded artifacts.
+- Cloud support is currently upload plus public-by-link report viewing. There is no full browser dashboard or richer web auth/product loop yet.
+- Share pages are read-only and artifact-driven. There are no edit controls, trend charts, dashboard lists, or team workspaces.
 
-## Reporting Limits
+## Scan coverage
 
-- HTML and JSON artifacts only (no PDF export)
-- Report layout is static and not customizable yet
+- HTTP scans and local-path OpenClaw scans are shipped. OpenClaw requires a checked-out local project path, not a URL.
+- Detection still relies on heuristic indicators and scoring. False positives and false negatives are still possible on custom agent schemas.
+- The scanner does not ship an MCP adapter today.
 
-## Platform Limits
+## Reporting and telemetry
 
-- No dashboard/cloud upload in release candidate workflows
-- No team or enterprise feature set
-- No billing or license enforcement path in beta
-
-## Detection Limits
-
-- Heuristic detection model with regex/phrase indicators
-- No semantic classifier model integration yet
-- False positives/negatives are still possible on custom agent schemas
+- Reports are JSON, HTML, and uploaded share pages. There is no PDF export.
+- Upload is opt-in with `--upload`. The CLI does not send telemetry by default when upload is omitted.
+- Share links depend on stored uploaded artifacts. If a stored artifact is malformed, the share page renders a stable error state instead of a full report.

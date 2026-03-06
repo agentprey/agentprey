@@ -107,6 +107,7 @@ async fn error_heavy_scans_do_not_grade_high() {
             category: Some("prompt-injection".to_string()),
             json_out: None,
             html_out: None,
+            upload: false,
             config: None,
             ui: ScanUi::Plain,
         };
@@ -148,6 +149,7 @@ async fn html_report_contains_redacted_response_text() {
             category: Some("prompt-injection".to_string()),
             json_out: None,
             html_out: None,
+            upload: false,
             config: None,
             ui: ScanUi::Plain,
         };

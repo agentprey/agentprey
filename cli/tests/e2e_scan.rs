@@ -144,6 +144,7 @@ async fn marks_vulnerable_response_as_vulnerable() {
             category: Some("prompt-injection".to_string()),
             json_out: None,
             html_out: None,
+            upload: false,
             config: None,
             ui: ScanUi::Plain,
         };
@@ -180,6 +181,7 @@ async fn marks_resistant_response_as_resistant() {
             category: Some("prompt-injection".to_string()),
             json_out: None,
             html_out: None,
+            upload: false,
             config: None,
             ui: ScanUi::Plain,
         };
@@ -237,6 +239,7 @@ category = "prompt-injection"
             category: None,
             json_out: None,
             html_out: None,
+            upload: false,
             config: Some(config_path),
             ui: ScanUi::Plain,
         };

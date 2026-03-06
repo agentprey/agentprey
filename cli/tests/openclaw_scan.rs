@@ -113,6 +113,7 @@ async fn openclaw_scan_flags_risky_fixture_and_reduces_findings_for_safe_fixture
             category: None,
             json_out: None,
             html_out: None,
+            upload: false,
             config: None,
             ui: ScanUi::Plain,
         };
@@ -133,6 +134,7 @@ async fn openclaw_scan_flags_risky_fixture_and_reduces_findings_for_safe_fixture
             category: None,
             json_out: None,
             html_out: None,
+            upload: false,
             config: None,
             ui: ScanUi::Plain,
         };
@@ -179,6 +181,7 @@ async fn openclaw_rejects_http_urls_with_local_path_error() {
             category: None,
             json_out: None,
             html_out: None,
+            upload: false,
             config: None,
             ui: ScanUi::Plain,
         };

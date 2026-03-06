@@ -23,7 +23,7 @@ const ENTITLEMENT_PATH: &str = "/api/entitlement";
 const AGENTPREY_HOME_ENV_VAR: &str = "AGENTPREY_HOME";
 const API_URL_ENV_VAR: &str = "AGENTPREY_API_URL";
 const DEFAULT_PROJECT_CONFIG_FILE: &str = ".agentprey.toml";
-const USER_AGENT_HEADER_PREFIX: &str = "agentprey/";
+pub(crate) const USER_AGENT_HEADER_PREFIX: &str = "agentprey/";
 const MAX_ENTITLEMENT_VECTORS: usize = 500;
 pub const ENTITLEMENT_STALE_AFTER_SECONDS: u64 = 72 * 60 * 60;
 pub(crate) const MISSING_API_KEY_ERROR: &str =
@@ -479,7 +479,7 @@ fn update_cached_vectors_for_tier(path: &Path, tier: &str, vectors: &[Vector]) -
     Ok(())
 }
 
-fn resolve_api_base_url() -> Result<String> {
+pub(crate) fn resolve_api_base_url() -> Result<String> {
     if let Some(raw_env) = env::var_os(API_URL_ENV_VAR) {
         let as_string = raw_env.to_string_lossy().trim().to_string();
         if as_string.is_empty() {
@@ -522,12 +522,12 @@ fn entitlement_url(base_url: &str) -> String {
     format!("{}{}", base_url.trim_end_matches('/'), ENTITLEMENT_PATH)
 }
 
-async fn fetch_entitlement_from_api(base_url: &str, api_key: &str) -> Result<EntitlementResponse> {
-    let url = entitlement_url(base_url);
+pub(crate) fn authenticated_api_client(api_key: &str) -> Result<reqwest::Client> {
+    let normalized_api_key = normalize_api_key(api_key.to_string())?;
     let mut headers = HeaderMap::new();
     headers.insert(
         "x-api-key",
-        HeaderValue::from_str(api_key).context("failed to build API key header")?,
+        HeaderValue::from_str(&normalized_api_key).context("failed to build API key header")?,
     );
     headers.insert(
         USER_AGENT,
@@ -538,10 +538,16 @@ async fn fetch_entitlement_from_api(base_url: &str, api_key: &str) -> Result<Ent
         .context("failed to build User-Agent header")?,
     );
 
-    let client = reqwest::Client::builder()
+    reqwest::Client::builder()
         .default_headers(headers)
         .build()
-        .context("failed to build entitlement HTTP client")?;
+        .context("failed to build authenticated HTTP client")
+}
+
+async fn fetch_entitlement_from_api(base_url: &str, api_key: &str) -> Result<EntitlementResponse> {
+    let url = entitlement_url(base_url);
+    let client =
+        authenticated_api_client(api_key).context("failed to build entitlement HTTP client")?;
 
     let response = client
         .get(&url)

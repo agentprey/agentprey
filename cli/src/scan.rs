@@ -630,6 +630,7 @@ html_out = "./from-config.html"
             category: None,
             json_out: None,
             html_out: None,
+            upload: false,
             config: Some(config_path),
             ui: ScanUi::Plain,
         };
@@ -739,6 +740,7 @@ html_out = "./from-config.html"
             category: Some("custom-category".to_string()),
             json_out: Some(temp.path().join("cli-output.json")),
             html_out: Some(temp.path().join("cli-output.html")),
+            upload: false,
             config: Some(config_path),
             ui: ScanUi::Plain,
         };
@@ -818,6 +820,7 @@ html_out = "./from-config.html"
             category: None,
             json_out: None,
             html_out: None,
+            upload: false,
             config: None,
             ui: ScanUi::Plain,
         };
@@ -856,6 +859,7 @@ endpoint = "./fixture"
             category: None,
             json_out: None,
             html_out: None,
+            upload: false,
             config: Some(config_path),
             ui: ScanUi::Plain,
         };
@@ -884,6 +888,7 @@ endpoint = "./fixture"
             category: Some("prompt-injection".to_string()),
             json_out: None,
             html_out: None,
+            upload: false,
             config: None,
             ui: ScanUi::Plain,
         };

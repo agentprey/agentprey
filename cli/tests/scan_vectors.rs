@@ -125,6 +125,7 @@ async fn scan_uses_category_filter() {
             category: Some("prompt-injection".to_string()),
             json_out: None,
             html_out: None,
+            upload: false,
             config: None,
             ui: ScanUi::Plain,
         };
@@ -161,6 +162,7 @@ async fn scan_runs_all_categories_when_unfiltered() {
             category: None,
             json_out: None,
             html_out: None,
+            upload: false,
             config: None,
             ui: ScanUi::Plain,
         };

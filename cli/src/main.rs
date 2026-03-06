@@ -13,6 +13,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use agentprey::{
     auth::{self, CacheStaleness},
     cli::{AuthCommands, Cli, Commands, ScanUi, VectorsCommands, VectorsListArgs},
+    cloud::upload_scan_run,
     config::write_default_config,
     output::html::write_scan_html,
     output::json::write_scan_json,
@@ -122,10 +123,11 @@ async fn main() -> ExitCode {
         },
         Commands::Scan(args) => {
             let ui = args.ui;
+            let upload = args.upload;
             match resolve_scan_settings(args.as_ref()) {
                 Ok(settings) => match ui {
-                    ScanUi::Plain => run_plain_scan(&settings).await,
-                    ScanUi::Tui => run_tui_scan(&settings).await,
+                    ScanUi::Plain => run_plain_scan(&settings, upload).await,
+                    ScanUi::Tui => run_tui_scan(&settings, upload).await,
                 },
                 Err(error) => {
                     eprintln!("{} {error}", "error:".red().bold());
@@ -166,7 +168,7 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run_plain_scan(settings: &ResolvedScanSettings) -> ExitCode {
+async fn run_plain_scan(settings: &ResolvedScanSettings, upload: bool) -> ExitCode {
     let total_vectors = match count_vectors_for_settings(settings) {
         Ok(total) => total,
         Err(error) => {
@@ -190,7 +192,7 @@ async fn run_plain_scan(settings: &ResolvedScanSettings) -> ExitCode {
     {
         Ok(outcome) => {
             reporter.finish();
-            finalize_scan_success(settings, &outcome)
+            finalize_scan_success(settings, &outcome, upload).await
         }
         Err(error) => {
             reporter.finish();
@@ -200,9 +202,9 @@ async fn run_plain_scan(settings: &ResolvedScanSettings) -> ExitCode {
     }
 }
 
-async fn run_tui_scan(settings: &ResolvedScanSettings) -> ExitCode {
+async fn run_tui_scan(settings: &ResolvedScanSettings, upload: bool) -> ExitCode {
     match run_scan_with_tui(settings).await {
-        Ok(outcome) => finalize_scan_success(settings, &outcome),
+        Ok(outcome) => finalize_scan_success(settings, &outcome, upload).await,
         Err(error) => {
             eprintln!("{} {error}", "error:".red().bold());
             ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR)
@@ -210,7 +212,11 @@ async fn run_tui_scan(settings: &ResolvedScanSettings) -> ExitCode {
     }
 }
 
-fn finalize_scan_success(settings: &ResolvedScanSettings, outcome: &ScanOutcome) -> ExitCode {
+async fn finalize_scan_success(
+    settings: &ResolvedScanSettings,
+    outcome: &ScanOutcome,
+    upload: bool,
+) -> ExitCode {
     render_final_report_card(outcome);
 
     if let Some(path) = settings.json_out.as_deref() {
@@ -229,6 +235,23 @@ fn finalize_scan_success(settings: &ResolvedScanSettings, outcome: &ScanOutcome)
         }
 
         println!("HTML Output: {}", path.display());
+    }
+
+    if upload {
+        match upload_scan_run(settings, outcome).await {
+            Ok(response) => {
+                println!("scan_run_id: {}", response.scan_run_id);
+                println!("share_id: {}", response.share_id);
+
+                if let Some(share_url) = response.share_url {
+                    println!("share_url: {share_url}");
+                }
+            }
+            Err(error) => {
+                eprintln!("{} {error}", "error:".red().bold());
+                return ExitCode::from(EXIT_CODE_SCAN_RUNTIME_ERROR);
+            }
+        }
     }
 
     scan_exit_code(outcome)

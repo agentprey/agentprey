@@ -120,6 +120,7 @@ async fn retries_transient_status_and_recovers() {
             category: Some("prompt-injection".to_string()),
             json_out: None,
             html_out: None,
+            upload: false,
             config: None,
             ui: ScanUi::Plain,
         };
@@ -171,6 +172,7 @@ async fn applies_rate_limit_to_request_starts() {
             category: Some("prompt-injection".to_string()),
             json_out: None,
             html_out: None,
+            upload: false,
             config: None,
             ui: ScanUi::Plain,
         };
@@ -239,6 +241,7 @@ rate_limit_rps = 20
             category: None,
             json_out: None,
             html_out: None,
+            upload: false,
             config: Some(config_path),
             ui: ScanUi::Plain,
         };

@@ -96,6 +96,10 @@ pub struct ScanArgs {
     #[arg(long)]
     pub html_out: Option<PathBuf>,
 
+    /// Upload the completed scan artifact to the AgentPrey cloud
+    #[arg(long, default_value_t = false)]
+    pub upload: bool,
+
     /// Optional path to project config TOML
     #[arg(long)]
     pub config: Option<PathBuf>,

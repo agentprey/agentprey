@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## v0.1.4
+
+### Added
+
+- OpenClaw local-path scanning support
+- TUI scan mode via `agentprey scan --ui tui`
+- API-key authenticated scan upload with returned share identifiers and optional share URLs
+- Public-by-link report pages for uploaded scans
+- OpenClaw and release-candidate smoke scripts
+
+### Changed
+
+- README and docs now reflect the shipped HTTP, OpenClaw, TUI, upload, and share-link flows
+- Release-candidate hardening now includes fuller smoke coverage and launch checklists
+
 ## v0.1.3
 
 ### Added

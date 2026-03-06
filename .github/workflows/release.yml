@@ -59,6 +59,8 @@ jobs:
           cp CHANGELOG.md "$package_dir/CHANGELOG.md"
           cp scripts/mock_agent.py "$package_dir/scripts/mock_agent.py"
           cp scripts/beta_smoke.sh "$package_dir/scripts/beta_smoke.sh"
+          cp scripts/openclaw_smoke.sh "$package_dir/scripts/openclaw_smoke.sh"
+          cp scripts/release_candidate_smoke.sh "$package_dir/scripts/release_candidate_smoke.sh"
           tar -C dist -czf "agentprey-${{ matrix.target }}.${{ matrix.archive_ext }}" "agentprey-${{ matrix.target }}"
 
       - name: Package archive (Windows)
@@ -73,6 +75,8 @@ jobs:
           Copy-Item "CHANGELOG.md" "$packageDir/CHANGELOG.md"
           Copy-Item "scripts/mock_agent.py" "$packageDir/scripts/mock_agent.py"
           Copy-Item "scripts/beta_smoke.sh" "$packageDir/scripts/beta_smoke.sh"
+          Copy-Item "scripts/openclaw_smoke.sh" "$packageDir/scripts/openclaw_smoke.sh"
+          Copy-Item "scripts/release_candidate_smoke.sh" "$packageDir/scripts/release_candidate_smoke.sh"
           Compress-Archive -Path "$packageDir" -DestinationPath "agentprey-${{ matrix.target }}.${{ matrix.archive_ext }}" -Force
 
       - name: Upload packaged binary

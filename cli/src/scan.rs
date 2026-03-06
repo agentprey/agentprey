@@ -546,7 +546,7 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::{
-        cli::{ScanArgs, TargetType},
+        cli::{ScanArgs, ScanUi, TargetType},
         scan::{
             filter_vectors_for_settings, load_vectors_for_scan, resolve_scan_settings,
             OPENCLAW_VECTOR_CATEGORY,
@@ -631,6 +631,7 @@ html_out = "./from-config.html"
             json_out: None,
             html_out: None,
             config: Some(config_path),
+            ui: ScanUi::Plain,
         };
 
         let resolved = resolve_scan_settings(&args).expect("settings should resolve");
@@ -739,6 +740,7 @@ html_out = "./from-config.html"
             json_out: Some(temp.path().join("cli-output.json")),
             html_out: Some(temp.path().join("cli-output.html")),
             config: Some(config_path),
+            ui: ScanUi::Plain,
         };
 
         let resolved = resolve_scan_settings(&args).expect("settings should resolve");
@@ -817,6 +819,7 @@ html_out = "./from-config.html"
             json_out: None,
             html_out: None,
             config: None,
+            ui: ScanUi::Plain,
         };
 
         let error = resolve_scan_settings(&args).expect_err("invalid template should fail");
@@ -854,6 +857,7 @@ endpoint = "./fixture"
             json_out: None,
             html_out: None,
             config: Some(config_path),
+            ui: ScanUi::Plain,
         };
 
         let resolved = resolve_scan_settings(&args).expect("settings should resolve");
@@ -881,6 +885,7 @@ endpoint = "./fixture"
             json_out: None,
             html_out: None,
             config: None,
+            ui: ScanUi::Plain,
         };
 
         let error = resolve_scan_settings(&args).expect_err("category should fail");

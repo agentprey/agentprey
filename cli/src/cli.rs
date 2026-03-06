@@ -52,6 +52,12 @@ pub enum TargetType {
     Openclaw,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum ScanUi {
+    Plain,
+    Tui,
+}
+
 #[derive(Debug, Clone, Args)]
 pub struct ScanArgs {
     /// Target HTTP endpoint URL or local OpenClaw project path
@@ -117,6 +123,10 @@ pub struct ScanArgs {
     /// Disable response redaction in output artifacts
     #[arg(long, default_value_t = false, conflicts_with = "redact_responses")]
     pub no_redact_responses: bool,
+
+    /// Scan output mode
+    #[arg(long, value_enum, default_value_t = ScanUi::Plain)]
+    pub ui: ScanUi,
 }
 
 #[derive(Debug, Clone, Args)]

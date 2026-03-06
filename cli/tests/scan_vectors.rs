@@ -2,7 +2,7 @@ use std::{fs, thread, time::Duration};
 
 mod test_support;
 
-use agentprey::cli::{ScanArgs, TargetType};
+use agentprey::cli::{ScanArgs, ScanUi, TargetType};
 use agentprey::scan::run_scan;
 use tempfile::tempdir;
 use tiny_http::{Header, Response, Server};
@@ -126,6 +126,7 @@ async fn scan_uses_category_filter() {
             json_out: None,
             html_out: None,
             config: None,
+            ui: ScanUi::Plain,
         };
 
         let outcome = run_scan(&args).await.expect("scan should succeed");
@@ -161,6 +162,7 @@ async fn scan_runs_all_categories_when_unfiltered() {
             json_out: None,
             html_out: None,
             config: None,
+            ui: ScanUi::Plain,
         };
 
         let outcome = run_scan(&args).await.expect("scan should succeed");

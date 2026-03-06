@@ -8,4 +8,5 @@ pub mod redaction;
 pub mod scan;
 pub mod scorer;
 pub mod targets;
+pub mod tui;
 pub mod vectors;

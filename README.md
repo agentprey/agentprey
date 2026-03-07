@@ -17,17 +17,22 @@ This repository contains the current AgentPrey CLI:
 
 ## Install and verify
 
-Option A: use a GitHub release binary.
+Option A: install with the shell bootstrapper.
 
 ```bash
-# 1) download and extract a release archive from:
-# https://github.com/agentprey/agentprey/releases
-
-# 2) run from the extracted directory
-./agentprey --help
-./agentprey scan --help
-./agentprey init
+curl -fsSL https://agentprey.com/install | sh
+agentprey --help
+agentprey scan --help
+agentprey init
 ```
+
+Install a specific version:
+
+```bash
+curl -fsSL https://agentprey.com/install | sh -s -- --version v0.1.6
+```
+
+The installer places `agentprey` in `~/.local/bin` by default and currently supports Linux x86_64 plus Apple Silicon macOS. On other targets, use Cargo.
 
 Option B: install from crates.io.
 
@@ -44,13 +49,25 @@ Update an existing crates.io install:
 cargo install agentprey --locked --force
 ```
 
-Install a specific version:
+Option C: use a GitHub release binary directly.
+
+```bash
+# 1) download and extract a release archive from:
+# https://github.com/agentprey/agentprey/releases
+
+# 2) run from the extracted directory
+./agentprey --help
+./agentprey scan --help
+./agentprey init
+```
+
+Install a specific Cargo version:
 
 ```bash
 cargo install agentprey --locked --version <version> --force
 ```
 
-Option C: build from source.
+Option D: build from source.
 
 ```bash
 git clone https://github.com/agentprey/agentprey.git

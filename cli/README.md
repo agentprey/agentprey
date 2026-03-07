@@ -5,10 +5,22 @@
 ## Install
 
 ```bash
+curl -fsSL https://agentprey.com/install | sh
+```
+
+## Install with Cargo
+
+```bash
 cargo install agentprey --locked
 ```
 
 ## Update
+
+```bash
+curl -fsSL https://agentprey.com/install | sh
+```
+
+## Update with Cargo
 
 ```bash
 cargo install agentprey --locked --force

@@ -29,13 +29,14 @@ Use this checklist before publishing any beta tag or calling a release candidate
 - [ ] README install and quickstart steps are current
 - [ ] `docs/known-limitations.md` reflects current scope
 - [ ] Release notes include upload/share behavior and limitations
+- [ ] Release notes include install command: `curl -fsSL https://agentprey.com/install | sh`
 - [ ] Release notes include upgrade command: `cargo install agentprey --locked --force`
 - [ ] Release notes include rollback guidance: `cargo install agentprey --locked --version <version> --force`
 
 ## Packaging and publish
 
 - [ ] Confirm release workflow still builds Linux, macOS, and Windows artifacts
-- [ ] Confirm release archives and checksums match expected target triples
+- [ ] Confirm release archives and `.sha256` checksum sidecars match expected target triples
 - [ ] Tag release candidate (`v0.1.0-beta.x`) or stable (`v0.1.0`)
 - [ ] Confirm prerelease behavior (`v*` with `-` publishes prerelease, stable tags publish full release)
 - [ ] Open or refresh the beta feedback issue and pin it in the repository

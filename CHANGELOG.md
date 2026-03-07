@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## v0.1.6
+
+### Added
+
+- Added a POSIX shell installer at `https://agentprey.com/install` for Linux x86_64 and Apple Silicon macOS
+- Added release checksum sidecars so the installer can verify downloaded archives before extraction
+
+### Changed
+
+- Release packaging now publishes checksum files alongside each binary archive
+- README and release docs now lead with the shell installer while keeping Cargo as the cross-platform fallback
+
 ## v0.1.5
 
 ### Added

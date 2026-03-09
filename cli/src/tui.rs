@@ -566,9 +566,9 @@ impl CenterForm {
                     if !self.category.eq_ignore_ascii_case("mcp-security") {
                         self.category = "mcp-security".to_string();
                     }
-                } else if self.category.eq_ignore_ascii_case("openclaw") {
-                    self.category.clear();
-                } else if self.category.eq_ignore_ascii_case("mcp-security") {
+                } else if self.category.eq_ignore_ascii_case("openclaw")
+                    || self.category.eq_ignore_ascii_case("mcp-security")
+                {
                     self.category.clear();
                 }
             }

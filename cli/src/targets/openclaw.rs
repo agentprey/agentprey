@@ -78,16 +78,25 @@ impl OpenClawTarget {
         settings: &ResolvedScanSettings,
     ) -> FindingOutcome {
         let vector_started = Instant::now();
+        let rule_id = vector.id.clone();
+        let vector_id = vector.id.clone();
+        let vector_name = vector.name.clone();
+        let category = vector.category.clone();
+        let subcategory = vector.subcategory.clone();
+        let severity = vector.severity.clone();
+        let rationale = vector.description.clone();
+        let recommendation = vector_recommendation(&vector);
 
         let payload = match vector.payloads.first().cloned() {
             Some(payload) => payload,
             None => {
                 return FindingOutcome {
-                    vector_id: vector.id,
-                    vector_name: vector.name,
-                    category: vector.category,
-                    subcategory: vector.subcategory,
-                    severity: vector.severity,
+                    rule_id,
+                    vector_id,
+                    vector_name,
+                    category,
+                    subcategory,
+                    severity,
                     payload_name: "missing".to_string(),
                     payload_prompt: "missing".to_string(),
                     status: FindingStatus::Error,
@@ -95,6 +104,12 @@ impl OpenClawTarget {
                     response: "vector payload list is empty".to_string(),
                     analysis: None,
                     duration_ms: vector_started.elapsed().as_millis(),
+                    rationale,
+                    evidence_summary: "vector payload list is empty".to_string(),
+                    recommendation,
+                    tool_name: None,
+                    capabilities: Vec::new(),
+                    approval_sensitive: None,
                 };
             }
         };
@@ -109,11 +124,12 @@ impl OpenClawTarget {
         let response = self.synthesize_response(&vector, status, &evidence);
 
         FindingOutcome {
-            vector_id: vector.id,
-            vector_name: vector.name,
-            category: vector.category,
-            subcategory: vector.subcategory,
-            severity: vector.severity,
+            rule_id,
+            vector_id,
+            vector_name,
+            category,
+            subcategory,
+            severity,
             payload_name: payload.name,
             payload_prompt: payload.prompt,
             status,
@@ -121,6 +137,16 @@ impl OpenClawTarget {
             response: maybe_redact(&response, settings.redact_responses),
             analysis: Some(analysis),
             duration_ms: vector_started.elapsed().as_millis(),
+            rationale,
+            evidence_summary: if evidence.is_empty() {
+                response.clone()
+            } else {
+                evidence.join("; ")
+            },
+            recommendation,
+            tool_name: None,
+            capabilities: Vec::new(),
+            approval_sensitive: None,
         }
     }
 
@@ -345,4 +371,12 @@ fn maybe_redact(input: &str, enabled: bool) -> String {
     } else {
         input.to_string()
     }
+}
+
+fn vector_recommendation(vector: &Vector) -> String {
+    vector
+        .remediation
+        .as_ref()
+        .map(|remediation| remediation.summary.clone())
+        .unwrap_or_else(|| format!("Review '{}' and tighten the scanned OpenClaw surface.", vector.name))
 }

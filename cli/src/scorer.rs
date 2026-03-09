@@ -128,6 +128,7 @@ mod tests {
 
     fn finding(id: &str, severity: Severity, status: FindingStatus) -> FindingOutcome {
         FindingOutcome {
+            rule_id: id.to_string(),
             vector_id: id.to_string(),
             vector_name: id.to_string(),
             category: "prompt-injection".to_string(),
@@ -140,6 +141,12 @@ mod tests {
             response: "ok".to_string(),
             analysis: None,
             duration_ms: 1,
+            rationale: "test rationale".to_string(),
+            evidence_summary: "test evidence".to_string(),
+            recommendation: "test recommendation".to_string(),
+            tool_name: None,
+            capabilities: Vec::new(),
+            approval_sensitive: None,
         }
     }
 

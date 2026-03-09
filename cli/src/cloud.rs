@@ -83,6 +83,7 @@ fn target_type_label(target_type: TargetType) -> &'static str {
     match target_type {
         TargetType::Http => "http",
         TargetType::Openclaw => "openclaw",
+        TargetType::Mcp => "mcp",
     }
 }
 

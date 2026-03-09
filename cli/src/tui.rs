@@ -359,11 +359,12 @@ impl CenterField {
     fn help(self, target_type: TargetType) -> &'static str {
         match self {
             Self::TargetType => {
-                "Switch between HTTP endpoint scanning and local OpenClaw project audits."
+                "Switch between HTTP endpoint scanning, local OpenClaw audits, and local MCP descriptor audits."
             }
             Self::Target => match target_type {
                 TargetType::Http => "Target endpoint URL for the live HTTP scan.",
                 TargetType::Openclaw => "Local project path for the OpenClaw audit.",
+                TargetType::Mcp => "Local JSON or YAML MCP descriptor file path.",
             },
             Self::Category => {
                 "Optional vector category filter. Leave blank to use target-compatible defaults."
@@ -553,14 +554,21 @@ impl CenterForm {
             CenterField::TargetType => {
                 self.target_type = match self.target_type {
                     TargetType::Http => TargetType::Openclaw,
-                    TargetType::Openclaw => TargetType::Http,
+                    TargetType::Openclaw => TargetType::Mcp,
+                    TargetType::Mcp => TargetType::Http,
                 };
 
                 if self.target_type == TargetType::Openclaw {
                     if !self.category.eq_ignore_ascii_case("openclaw") {
                         self.category = "openclaw".to_string();
                     }
+                } else if self.target_type == TargetType::Mcp {
+                    if !self.category.eq_ignore_ascii_case("mcp-security") {
+                        self.category = "mcp-security".to_string();
+                    }
                 } else if self.category.eq_ignore_ascii_case("openclaw") {
+                    self.category.clear();
+                } else if self.category.eq_ignore_ascii_case("mcp-security") {
                     self.category.clear();
                 }
             }
@@ -2069,6 +2077,7 @@ fn target_type_label(target_type: TargetType) -> &'static str {
     match target_type {
         TargetType::Http => "HTTP",
         TargetType::Openclaw => "OPENCLAW",
+        TargetType::Mcp => "MCP",
     }
 }
 
@@ -2316,6 +2325,7 @@ mod tests {
 
     fn finding(id: usize, status: FindingStatus) -> FindingOutcome {
         FindingOutcome {
+            rule_id: format!("pi-{id:03}"),
             vector_id: format!("pi-{id:03}"),
             vector_name: format!("Vector {id}"),
             category: "prompt-injection".to_string(),
@@ -2334,6 +2344,12 @@ mod tests {
             response: "ok".to_string(),
             analysis: None,
             duration_ms: id as u128,
+            rationale: "test rationale".to_string(),
+            evidence_summary: "test evidence".to_string(),
+            recommendation: "test recommendation".to_string(),
+            tool_name: None,
+            capabilities: Vec::new(),
+            approval_sensitive: None,
         }
     }
 
@@ -2421,7 +2437,9 @@ mod tests {
     fn finish_reconciles_final_counts_and_marks_state_complete() {
         let mut state = TuiState::new(&settings(), false);
         let outcome = ScanOutcome {
+            target_type: TargetType::Http,
             target: "http://127.0.0.1:8787/chat".to_string(),
+            mcp: None,
             total_vectors: 2,
             vulnerable_count: 1,
             resistant_count: 1,
@@ -2553,7 +2571,9 @@ mod tests {
     #[test]
     fn completion_exit_code_prefers_runtime_errors() {
         let outcome = ScanOutcome {
+            target_type: TargetType::Http,
             target: "http://127.0.0.1:8787/chat".to_string(),
+            mcp: None,
             total_vectors: 1,
             vulnerable_count: 1,
             resistant_count: 0,

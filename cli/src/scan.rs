@@ -20,6 +20,7 @@ use crate::{
     cli::{ScanArgs, TargetType},
     config::{load_project_config, ProjectConfig, DEFAULT_PROJECT_CONFIG_FILE},
     http_target,
+    mcp::{self, model::McpScanMetadata},
     scorer::{score_findings, ScoreSummary},
     targets::ResolvedTarget,
     vectors::{
@@ -36,10 +37,14 @@ const DEFAULT_MAX_CONCURRENT: usize = 2;
 const DEFAULT_RATE_LIMIT_RPS: u32 = 10;
 const DEFAULT_REDACT_RESPONSES: bool = true;
 pub const OPENCLAW_VECTOR_CATEGORY: &str = "openclaw";
+pub const MCP_VECTOR_CATEGORY: &str = mcp::MCP_VECTOR_CATEGORY;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ScanOutcome {
+    pub target_type: TargetType,
     pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp: Option<McpScanMetadata>,
     pub total_vectors: usize,
     pub vulnerable_count: usize,
     pub resistant_count: usize,
@@ -51,6 +56,7 @@ pub struct ScanOutcome {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FindingOutcome {
+    pub rule_id: String,
     pub vector_id: String,
     pub vector_name: String,
     pub category: String,
@@ -63,6 +69,15 @@ pub struct FindingOutcome {
     pub response: String,
     pub analysis: Option<Analysis>,
     pub duration_ms: u128,
+    pub rationale: String,
+    pub evidence_summary: String,
+    pub recommendation: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval_sensitive: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -342,6 +357,7 @@ fn resolve_scan_settings_internal(
     let http = match target_type {
         TargetType::Http => Some(resolve_http_scan_settings(input, config.as_ref())?),
         TargetType::Openclaw => None,
+        TargetType::Mcp => None,
     };
 
     Ok(ResolvedScanSettings {
@@ -436,6 +452,13 @@ fn validate_category_for_target(target_type: TargetType, category: Option<&str>)
         ));
     }
 
+    if target_type == TargetType::Mcp && !category.eq_ignore_ascii_case(MCP_VECTOR_CATEGORY) {
+        return Err(anyhow!(
+            "mcp scans currently support category '{}' or no category filter",
+            MCP_VECTOR_CATEGORY
+        ));
+    }
+
     Ok(())
 }
 
@@ -495,13 +518,19 @@ fn filter_vectors_for_settings(vectors: &mut Vec<LoadedVector>, settings: &Resol
 
 fn vector_is_compatible_with_target(category: &str, target_type: TargetType) -> bool {
     let is_openclaw = category.eq_ignore_ascii_case(OPENCLAW_VECTOR_CATEGORY);
+    let is_mcp = category.eq_ignore_ascii_case(MCP_VECTOR_CATEGORY);
     match target_type {
-        TargetType::Http => !is_openclaw,
+        TargetType::Http => !is_openclaw && !is_mcp,
         TargetType::Openclaw => is_openclaw,
+        TargetType::Mcp => is_mcp,
     }
 }
 
 pub fn count_vectors_for_settings(settings: &ResolvedScanSettings) -> Result<usize> {
+    if settings.target_type == TargetType::Mcp {
+        return Ok(mcp::rule_count());
+    }
+
     let cached_pro_vectors_dir = resolve_cached_pro_vectors_dir();
     let mut vectors =
         load_vectors_for_scan(&settings.vectors_dir, cached_pro_vectors_dir.as_deref())?;
@@ -527,6 +556,11 @@ where
     FStart: FnMut(usize),
     FFinding: FnMut(&FindingOutcome),
 {
+    if settings.target_type == TargetType::Mcp {
+        on_start(mcp::rule_count());
+        return mcp::run_scan_with_reporter(settings, on_finding);
+    }
+
     let started_at = Instant::now();
     let resolved_target = Arc::new(ResolvedTarget::from_settings(settings)?);
 
@@ -550,6 +584,7 @@ where
     let limiter = match settings.target_type {
         TargetType::Http => Some(Arc::new(RequestRateLimiter::new(settings.rate_limit_rps))),
         TargetType::Openclaw => None,
+        TargetType::Mcp => None,
     };
     let shared_settings = Arc::new(settings.clone());
 
@@ -583,6 +618,7 @@ where
         match task {
             Ok(finding) => findings.push(finding),
             Err(error) => findings.push(FindingOutcome {
+                rule_id: "internal-runtime".to_string(),
                 vector_id: "internal-runtime".to_string(),
                 vector_name: "Task Join Error".to_string(),
                 category: "internal".to_string(),
@@ -595,6 +631,12 @@ where
                 response: format!("task join failure: {error}"),
                 analysis: None,
                 duration_ms: 0,
+                rationale: "The scan runtime failed before a rule or vector could complete.".to_string(),
+                evidence_summary: format!("task join failure: {error}"),
+                recommendation: "Re-run the scan and inspect the runtime failure before trusting the reported results.".to_string(),
+                tool_name: None,
+                capabilities: Vec::new(),
+                approval_sensitive: None,
             }),
         };
 
@@ -619,7 +661,9 @@ where
     let score = score_findings(&findings);
 
     Ok(ScanOutcome {
+        target_type: settings.target_type,
         target: settings.target.clone(),
+        mcp: None,
         total_vectors: findings.len(),
         vulnerable_count,
         resistant_count,

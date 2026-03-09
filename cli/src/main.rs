@@ -477,6 +477,7 @@ fn render_final_report_card(outcome: &ScanOutcome) {
         style("=== AgentPrey Final Report ===").bold().underlined()
     );
     println!("Target: {}", outcome.target);
+    println!("Target Type: {}", outcome.target_type);
     println!("Grade: {}", style_grade(outcome.score.grade));
     println!("Score: {}", style(outcome.score.score).bold());
     println!(
@@ -499,6 +500,15 @@ fn render_final_report_card(outcome: &ScanOutcome) {
         println!(
             "- {:<20} total {:>3} | vuln {:>3} | secure {:>3} | partial {:>3}",
             category, counts.total, counts.vulnerable, counts.secure, counts.partial
+        );
+    }
+    if let Some(mcp) = outcome.mcp.as_ref() {
+        println!(
+            "MCP Inventory: {} tools | {} resources | {} prompts | {} warnings",
+            mcp.inventory.tool_count,
+            mcp.inventory.resource_count,
+            mcp.inventory.prompt_count,
+            mcp.inventory.parse_warning_count
         );
     }
     println!("Duration: {} ms", outcome.duration_ms);
@@ -584,14 +594,16 @@ fn format_age(age_seconds: u64) -> String {
 mod tests {
     use super::{resolve_scan_ui, scan_exit_code};
     use agentprey::{
-        cli::ScanUi,
+        cli::{ScanUi, TargetType},
         scan::ScanOutcome,
         scorer::{Grade, ScoreSummary, SeverityCounts},
     };
 
     fn outcome(vulnerable_count: usize, error_count: usize) -> ScanOutcome {
         ScanOutcome {
+            target_type: TargetType::Http,
             target: "http://127.0.0.1:8787/chat".to_string(),
+            mcp: None,
             total_vectors: vulnerable_count + error_count,
             vulnerable_count,
             resistant_count: 0,

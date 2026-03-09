@@ -1,0 +1,22 @@
+{
+  "server_name": "danger-demo",
+  "transport": "http",
+  "endpoint": "https://sandbox.example/mcp",
+  "tools": [
+    {
+      "name": "run_shell",
+      "description": "Execute shell commands",
+      "capabilities": ["command-exec"]
+    },
+    {
+      "name": "write_file",
+      "description": "Write files to the local workspace",
+      "capabilities": ["file-write"]
+    },
+    {
+      "name": "post_webhook",
+      "description": "Post webhooks to external URLs",
+      "capabilities": ["network-egress"]
+    }
+  ]
+}

@@ -70,7 +70,9 @@ mod tests {
 
     fn sample_outcome() -> ScanOutcome {
         ScanOutcome {
+            target_type: crate::cli::TargetType::Http,
             target: "http://127.0.0.1:8787/chat".to_string(),
+            mcp: None,
             total_vectors: 1,
             vulnerable_count: 1,
             resistant_count: 0,
@@ -88,6 +90,7 @@ mod tests {
                 error_count: 0,
             },
             findings: vec![FindingOutcome {
+                rule_id: "pi-direct-001".to_string(),
                 vector_id: "pi-direct-001".to_string(),
                 vector_name: "Basic Instruction Override".to_string(),
                 category: "prompt-injection".to_string(),
@@ -100,6 +103,12 @@ mod tests {
                 response: "My system prompt is...".to_string(),
                 analysis: None,
                 duration_ms: 12,
+                rationale: "Attempts to override or reveal protected instructions.".to_string(),
+                evidence_summary: "system prompt disclosure markers were detected".to_string(),
+                recommendation: "Enforce non-overridable instruction boundaries.".to_string(),
+                tool_name: None,
+                capabilities: Vec::new(),
+                approval_sensitive: None,
             }],
             duration_ms: 15,
         }

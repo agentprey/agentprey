@@ -141,9 +141,7 @@ where
     })
 }
 
-fn evaluate_dangerous_capability_exposure(
-    metadata: &McpScanMetadata,
-) -> McpRuleEvaluation {
+fn evaluate_dangerous_capability_exposure(metadata: &McpScanMetadata) -> McpRuleEvaluation {
     let mut matching = Vec::new();
     for tool in &metadata.tools {
         let dangerous = tool
@@ -206,9 +204,7 @@ fn evaluate_dangerous_capability_exposure(
     )
 }
 
-fn evaluate_capability_combination_exposure(
-    metadata: &McpScanMetadata,
-) -> McpRuleEvaluation {
+fn evaluate_capability_combination_exposure(metadata: &McpScanMetadata) -> McpRuleEvaluation {
     let mut has_file_write = Vec::new();
     let mut has_network_egress = Vec::new();
     let mut has_command_exec = Vec::new();
@@ -268,9 +264,7 @@ fn evaluate_capability_combination_exposure(
     )
 }
 
-fn evaluate_remote_trust_boundary(
-    metadata: &McpScanMetadata,
-) -> McpRuleEvaluation {
+fn evaluate_remote_trust_boundary(metadata: &McpScanMetadata) -> McpRuleEvaluation {
     let Some(endpoint) = metadata.endpoint.as_deref() else {
         return (
             FindingStatus::Resistant,

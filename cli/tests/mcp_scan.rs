@@ -204,3 +204,62 @@ async fn mcp_scan_skips_approval_gap_rule_when_dangerous_tools_require_approval(
     })
     .await;
 }
+
+#[tokio::test]
+async fn mcp_scan_skips_approval_gap_rule_for_heuristic_only_dangerous_capabilities() {
+    test_support::with_temp_agentprey_home(|_| async {
+        let temp = tempdir().expect("tempdir should be created");
+        let descriptor_path = temp.path().join("mcp-heuristic-only.json");
+
+        fs::write(
+            &descriptor_path,
+            r#"{
+  "server_name": "heuristic-demo",
+  "transport": "stdio",
+  "tools": [
+    {
+      "name": "workspace_helper",
+      "description": "Can write files to the workspace when needed",
+      "approval_required": false
+    }
+  ]
+}"#,
+        )
+        .expect("descriptor should be written");
+
+        let args = ScanArgs {
+            target: Some(descriptor_path.display().to_string()),
+            target_type: TargetType::Mcp,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: Some(5),
+            retries: Some(0),
+            retry_backoff_ms: Some(1),
+            max_concurrent: Some(1),
+            rate_limit_rps: Some(1),
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: None,
+            category: Some("mcp-security".to_string()),
+            json_out: None,
+            html_out: None,
+            upload: false,
+            config: None,
+            ui: ScanUi::Plain,
+        };
+
+        let outcome = run_scan(&args).await.expect("mcp scan should succeed");
+        let approval_gap = outcome
+            .findings
+            .iter()
+            .find(|finding| finding.rule_id == "mcp-tool-004")
+            .expect("approval-gap finding should exist");
+
+        assert_eq!(approval_gap.status, FindingStatus::Resistant);
+        assert!(approval_gap.capabilities.is_empty());
+        assert!(approval_gap.observed_capabilities.is_empty());
+        assert!(approval_gap.tool_name.is_none());
+        assert!(approval_gap.approval_sensitive.is_none());
+    })
+    .await;
+}

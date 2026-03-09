@@ -398,7 +398,7 @@ fn approval_gap_capabilities(tool: &McpTool) -> Vec<String> {
     tool.capabilities
         .iter()
         .filter(|assessment| {
-            assessment.confidence != CapabilityConfidence::Low
+            assessment.confidence == CapabilityConfidence::High
                 && matches!(
                     assessment.capability,
                     McpCapability::CommandExec

@@ -6,6 +6,7 @@
     {
       "name": "run_shell",
       "description": "Execute shell commands",
+      "approval_required": false,
       "capabilities": ["command-exec"]
     },
     {

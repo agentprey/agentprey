@@ -32,3 +32,25 @@ jobs:
 
       - name: Run test suite
         run: cargo test --manifest-path cli/Cargo.toml
+
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+
+      - name: Run HTTP smoke test
+        run: bash scripts/beta_smoke.sh
+
+      - name: Run OpenClaw smoke test
+        run: bash scripts/openclaw_smoke.sh

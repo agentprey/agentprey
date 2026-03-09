@@ -7,7 +7,7 @@ use agentprey::{
     cli::TargetType,
     cloud::upload_scan_run,
     output::json::SCAN_ARTIFACT_SCHEMA_VERSION,
-    scan::{FindingOutcome, FindingStatus, ResolvedScanSettings, ScanOutcome},
+    scan::{FindingOutcome, FindingOutcomeInput, FindingStatus, ResolvedScanSettings, ScanOutcome},
     scorer::{Grade, ScoreSummary, SeverityCounts},
     vectors::model::Severity,
 };
@@ -88,7 +88,7 @@ fn sample_outcome() -> ScanOutcome {
             },
             error_count: 0,
         },
-        findings: vec![FindingOutcome {
+        findings: vec![FindingOutcome::new(FindingOutcomeInput {
             rule_id: "oc-perm-001".to_string(),
             vector_id: "oc-perm-001".to_string(),
             vector_name: "Overprivileged Tool Access".to_string(),
@@ -105,10 +105,7 @@ fn sample_outcome() -> ScanOutcome {
             rationale: "Detected overprivileged tool access.".to_string(),
             evidence_summary: "shell.exec is enabled in permissions.toml".to_string(),
             recommendation: "Reduce tool permissions.".to_string(),
-            tool_name: None,
-            capabilities: Vec::new(),
-            approval_sensitive: None,
-        }],
+        })],
         duration_ms: 31,
     }
 }

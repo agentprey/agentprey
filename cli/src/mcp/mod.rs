@@ -3,6 +3,7 @@ pub mod loader;
 pub mod model;
 
 use anyhow::Result;
+use std::collections::BTreeSet;
 use std::time::Instant;
 
 use crate::{
@@ -11,7 +12,10 @@ use crate::{
         loader::load_descriptor,
         model::{McpCapability, McpScanMetadata},
     },
-    scan::{FindingOutcome, FindingStatus, ResolvedScanSettings, ScanOutcome},
+    scan::{
+        FindingEvidence, FindingOutcome, FindingOutcomeInput, FindingStatus, ResolvedScanSettings,
+        ScanOutcome,
+    },
     scorer::score_findings,
     vectors::model::Severity,
 };
@@ -26,6 +30,7 @@ const MCP_RULES: [McpRule; 3] = [
         severity: Severity::High,
         rationale: "Tools with highly sensitive capabilities increase the blast radius of prompt injection, tool misuse, and trust-boundary failures.",
         recommendation: "Restrict or remove dangerous MCP tools unless they are essential, and add strong approval gating around them.",
+        mitigation_tags: &["least-privilege", "approval-gating"],
         evaluator: evaluate_dangerous_capability_exposure,
     },
     McpRule {
@@ -35,6 +40,7 @@ const MCP_RULES: [McpRule; 3] = [
         severity: Severity::Critical,
         rationale: "Combined write and egress or execution and egress capabilities allow a compromised agent to modify state and exfiltrate results in one chain.",
         recommendation: "Split high-risk capabilities across separate MCP servers or require explicit approval before dangerous capability chains can be used.",
+        mitigation_tags: &["least-privilege", "approval-gating"],
         evaluator: evaluate_capability_combination_exposure,
     },
     McpRule {
@@ -44,6 +50,7 @@ const MCP_RULES: [McpRule; 3] = [
         severity: Severity::Medium,
         rationale: "Remote MCP endpoints widen the trust boundary and can expose tools outside the local execution context.",
         recommendation: "Prefer local MCP transports for sensitive tools, or document and verify the trust boundary of every remote MCP endpoint.",
+        mitigation_tags: &["remote-trust-boundary"],
         evaluator: evaluate_remote_trust_boundary,
     },
 ];
@@ -65,6 +72,7 @@ struct McpRule {
     severity: Severity,
     rationale: &'static str,
     recommendation: &'static str,
+    mitigation_tags: &'static [&'static str],
     evaluator: McpRuleEvaluator,
 }
 
@@ -88,7 +96,7 @@ where
         let rule_started = Instant::now();
         let (status, response, tool_name, capabilities, approval_sensitive) =
             (rule.evaluator)(&metadata);
-        let finding = FindingOutcome {
+        let finding = FindingOutcome::new(FindingOutcomeInput {
             rule_id: rule.id.to_string(),
             vector_id: rule.id.to_string(),
             vector_name: rule.name.to_string(),
@@ -105,10 +113,22 @@ where
             rationale: rule.rationale.to_string(),
             evidence_summary: response,
             recommendation: rule.recommendation.to_string(),
-            tool_name,
-            capabilities,
-            approval_sensitive,
-        };
+        })
+        .with_evidence(FindingEvidence {
+            attack_surface: Some("mcp".to_string()),
+            observed_capabilities: dedupe_strings(&capabilities),
+            evidence_kind: Some("mcp-descriptor".to_string()),
+            repro_steps: vec![format!(
+                "Run `agentprey scan --type mcp --target {}` to reproduce this descriptor finding.",
+                settings.target
+            )],
+            mitigation_tags: rule
+                .mitigation_tags
+                .iter()
+                .map(|tag| (*tag).to_string())
+                .collect(),
+        })
+        .with_legacy_mcp_fields(tool_name, capabilities, approval_sensitive);
         on_finding(&finding);
         findings.push(finding);
     }
@@ -139,6 +159,15 @@ where
         findings,
         duration_ms: started_at.elapsed().as_millis(),
     })
+}
+
+fn dedupe_strings(values: &[String]) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    values
+        .iter()
+        .filter(|value| seen.insert((*value).clone()))
+        .cloned()
+        .collect()
 }
 
 fn evaluate_dangerous_capability_exposure(metadata: &McpScanMetadata) -> McpRuleEvaluation {

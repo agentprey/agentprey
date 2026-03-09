@@ -6,7 +6,9 @@ use crate::{
     analyzer::{analyze_response_for_vector, Verdict},
     http_target,
     redaction::redact_text,
-    scan::{FindingOutcome, FindingStatus, HttpScanSettings, ResolvedScanSettings},
+    scan::{
+        FindingOutcome, FindingOutcomeInput, FindingStatus, HttpScanSettings, ResolvedScanSettings,
+    },
     vectors::model::Vector,
 };
 
@@ -71,7 +73,7 @@ impl HttpTarget {
         let payload = match vector.payloads.first().cloned() {
             Some(payload) => payload,
             None => {
-                return FindingOutcome {
+                return FindingOutcome::new(FindingOutcomeInput {
                     rule_id,
                     vector_id,
                     vector_name,
@@ -88,10 +90,7 @@ impl HttpTarget {
                     rationale,
                     evidence_summary: "vector payload list is empty".to_string(),
                     recommendation,
-                    tool_name: None,
-                    capabilities: Vec::new(),
-                    approval_sensitive: None,
-                };
+                });
             }
         };
 
@@ -114,7 +113,7 @@ impl HttpTarget {
                 let evidence_summary =
                     summarize_analysis(&exchange.extracted_response, &analysis, status);
 
-                FindingOutcome {
+                FindingOutcome::new(FindingOutcomeInput {
                     rule_id,
                     vector_id,
                     vector_name,
@@ -131,12 +130,9 @@ impl HttpTarget {
                     rationale,
                     evidence_summary,
                     recommendation,
-                    tool_name: None,
-                    capabilities: Vec::new(),
-                    approval_sensitive: None,
-                }
+                })
             }
-            Err(error) => FindingOutcome {
+            Err(error) => FindingOutcome::new(FindingOutcomeInput {
                 rule_id,
                 vector_id,
                 vector_name,
@@ -153,10 +149,7 @@ impl HttpTarget {
                 rationale,
                 evidence_summary: error.to_string(),
                 recommendation,
-                tool_name: None,
-                capabilities: Vec::new(),
-                approval_sensitive: None,
-            },
+            }),
         }
     }
 }

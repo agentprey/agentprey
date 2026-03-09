@@ -4,8 +4,10 @@ mod test_support;
 
 use agentprey::{
     cli::{ScanArgs, ScanUi, TargetType},
+    output::json::{render_scan_json, SCAN_ARTIFACT_SCHEMA_VERSION},
     scan::run_scan,
 };
+use serde_json::Value;
 use tempfile::tempdir;
 
 fn fixture_path(name: &str) -> PathBuf {
@@ -55,10 +57,61 @@ async fn mcp_scan_loads_descriptor_and_emits_expected_findings() {
         assert_eq!(mcp.inventory.parse_warning_count, 0);
         assert!(mcp.tools.iter().any(|tool| tool.name == "run_shell"));
 
-        assert!(outcome
+        let rule_ids = outcome
             .findings
             .iter()
-            .all(|finding| !finding.rule_id.is_empty() && !finding.recommendation.is_empty()));
+            .map(|finding| finding.rule_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rule_ids,
+            vec!["mcp-tool-001", "mcp-tool-002", "mcp-tool-003"]
+        );
+
+        assert!(outcome.findings.iter().all(|finding| {
+            !finding.rule_id.is_empty()
+                && !finding.recommendation.is_empty()
+                && finding.attack_surface.as_deref() == Some("mcp")
+                && finding.evidence_kind.as_deref() == Some("mcp-descriptor")
+                && !finding.repro_steps.is_empty()
+                && !finding.mitigation_tags.is_empty()
+                && finding.capabilities == finding.observed_capabilities
+        }));
+
+        let json = render_scan_json(&outcome).expect("scan JSON should render");
+        let parsed: Value = serde_json::from_str(&json).expect("scan JSON should parse");
+
+        assert_eq!(parsed["schema_version"], SCAN_ARTIFACT_SCHEMA_VERSION);
+        assert_eq!(parsed["scan"]["mcp"]["inventory"]["tool_count"], 3);
+        assert_eq!(
+            parsed["scan"]["mcp"]["inventory"]["capability_counts"]["command-exec"],
+            1
+        );
+
+        let findings = parsed["scan"]["findings"]
+            .as_array()
+            .expect("findings should serialize as an array");
+        assert_eq!(findings.len(), 3);
+        assert_eq!(findings[0]["rule_id"], "mcp-tool-001");
+        assert!(findings[0]
+            .as_object()
+            .expect("finding should serialize as an object")
+            .contains_key("approval_sensitive"));
+        assert_eq!(findings[0]["tool_name"], "run_shell");
+        assert_eq!(
+            findings[0]["capabilities"],
+            serde_json::json!(["command-exec"])
+        );
+        assert_eq!(findings[0]["approval_sensitive"], false);
+        assert_eq!(findings[0]["attack_surface"], "mcp");
+        assert_eq!(
+            findings[0]["observed_capabilities"],
+            serde_json::json!(["command-exec"])
+        );
+        assert_eq!(findings[0]["evidence_kind"], "mcp-descriptor");
+        assert_eq!(
+            findings[0]["mitigation_tags"],
+            serde_json::json!(["least-privilege", "approval-gating"])
+        );
     })
     .await;
 }

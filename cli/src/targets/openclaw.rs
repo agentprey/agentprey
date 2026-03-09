@@ -378,5 +378,10 @@ fn vector_recommendation(vector: &Vector) -> String {
         .remediation
         .as_ref()
         .map(|remediation| remediation.summary.clone())
-        .unwrap_or_else(|| format!("Review '{}' and tighten the scanned OpenClaw surface.", vector.name))
+        .unwrap_or_else(|| {
+            format!(
+                "Review '{}' and tighten the scanned OpenClaw surface.",
+                vector.name
+            )
+        })
 }

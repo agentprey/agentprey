@@ -51,14 +51,7 @@ pub struct InitArgs {
 }
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    clap::ValueEnum,
-    serde::Deserialize,
-    serde::Serialize,
+    Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, serde::Deserialize, serde::Serialize,
 )]
 #[serde(rename_all = "lowercase")]
 pub enum TargetType {

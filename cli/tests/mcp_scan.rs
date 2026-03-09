@@ -53,10 +53,7 @@ async fn mcp_scan_loads_descriptor_and_emits_expected_findings() {
         let mcp = outcome.mcp.as_ref().expect("mcp metadata should exist");
         assert_eq!(mcp.inventory.tool_count, 3);
         assert_eq!(mcp.inventory.parse_warning_count, 0);
-        assert!(mcp
-            .tools
-            .iter()
-            .any(|tool| tool.name == "run_shell"));
+        assert!(mcp.tools.iter().any(|tool| tool.name == "run_shell"));
 
         assert!(outcome
             .findings

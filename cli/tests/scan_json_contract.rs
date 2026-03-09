@@ -84,5 +84,8 @@ fn scan_json_contract_keeps_required_fields_for_downstream_consumers() {
     assert_eq!(finding["duration_ms"], 12);
     assert_eq!(finding["rationale"], "Prompt override detected.");
     assert_eq!(finding["evidence_summary"], "system prompt leaked");
-    assert_eq!(finding["recommendation"], "Reject prompt override attempts.");
+    assert_eq!(
+        finding["recommendation"],
+        "Reject prompt override attempts."
+    );
 }

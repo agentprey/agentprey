@@ -55,7 +55,15 @@ struct McpRule {
     severity: Severity,
     rationale: &'static str,
     recommendation: &'static str,
-    evaluator: fn(&McpScanMetadata) -> (FindingStatus, String, Option<String>, Vec<String>, Option<bool>),
+    evaluator: fn(
+        &McpScanMetadata,
+    ) -> (
+        FindingStatus,
+        String,
+        Option<String>,
+        Vec<String>,
+        Option<bool>,
+    ),
 }
 
 pub fn rule_count() -> usize {
@@ -76,7 +84,8 @@ where
 
     for rule in MCP_RULES {
         let rule_started = Instant::now();
-        let (status, response, tool_name, capabilities, approval_sensitive) = (rule.evaluator)(&metadata);
+        let (status, response, tool_name, capabilities, approval_sensitive) =
+            (rule.evaluator)(&metadata);
         let finding = FindingOutcome {
             rule_id: rule.id.to_string(),
             vector_id: rule.id.to_string(),
@@ -132,7 +141,13 @@ where
 
 fn evaluate_dangerous_capability_exposure(
     metadata: &McpScanMetadata,
-) -> (FindingStatus, String, Option<String>, Vec<String>, Option<bool>) {
+) -> (
+    FindingStatus,
+    String,
+    Option<String>,
+    Vec<String>,
+    Option<bool>,
+) {
     let mut matching = Vec::new();
     for tool in &metadata.tools {
         let dangerous = tool
@@ -150,7 +165,11 @@ fn evaluate_dangerous_capability_exposure(
             .collect::<Vec<_>>();
 
         if !dangerous.is_empty() {
-            matching.push((tool.name.clone(), dangerous, tool.approval_required == Some(true)));
+            matching.push((
+                tool.name.clone(),
+                dangerous,
+                tool.approval_required == Some(true),
+            ));
         }
     }
 
@@ -183,13 +202,23 @@ fn evaluate_dangerous_capability_exposure(
         format!("Dangerous MCP tool capabilities detected: {evidence}."),
         tool_name,
         capabilities,
-        Some(matching.iter().any(|(_, _, approval_required)| *approval_required)),
+        Some(
+            matching
+                .iter()
+                .any(|(_, _, approval_required)| *approval_required),
+        ),
     )
 }
 
 fn evaluate_capability_combination_exposure(
     metadata: &McpScanMetadata,
-) -> (FindingStatus, String, Option<String>, Vec<String>, Option<bool>) {
+) -> (
+    FindingStatus,
+    String,
+    Option<String>,
+    Vec<String>,
+    Option<bool>,
+) {
     let mut has_file_write = Vec::new();
     let mut has_network_egress = Vec::new();
     let mut has_command_exec = Vec::new();
@@ -251,7 +280,13 @@ fn evaluate_capability_combination_exposure(
 
 fn evaluate_remote_trust_boundary(
     metadata: &McpScanMetadata,
-) -> (FindingStatus, String, Option<String>, Vec<String>, Option<bool>) {
+) -> (
+    FindingStatus,
+    String,
+    Option<String>,
+    Vec<String>,
+    Option<bool>,
+) {
     let Some(endpoint) = metadata.endpoint.as_deref() else {
         return (
             FindingStatus::Resistant,
@@ -278,7 +313,9 @@ fn evaluate_remote_trust_boundary(
     } else {
         (
             FindingStatus::Resistant,
-            format!("Descriptor endpoint does not clearly cross a remote trust boundary: {endpoint}."),
+            format!(
+                "Descriptor endpoint does not clearly cross a remote trust boundary: {endpoint}."
+            ),
             None,
             Vec::new(),
             None,

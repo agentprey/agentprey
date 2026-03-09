@@ -229,7 +229,9 @@ fn optional_string(
     warnings: &mut Vec<McpParseWarning>,
 ) -> Option<String> {
     match object.get(key) {
-        Some(Value::String(value)) => Some(value.trim().to_string()).filter(|value| !value.is_empty()),
+        Some(Value::String(value)) => {
+            Some(value.trim().to_string()).filter(|value| !value.is_empty())
+        }
         Some(Value::Null) | None => None,
         Some(_) => {
             warnings.push(warning(
@@ -323,7 +325,10 @@ mod tests {
 
         let descriptor = load_descriptor(&path).expect("descriptor should load");
         assert_eq!(descriptor.tools.len(), 1);
-        assert!(descriptor.parse_warnings.iter().any(|warning| warning.code == "invalid-tool-entry"));
+        assert!(descriptor
+            .parse_warnings
+            .iter()
+            .any(|warning| warning.code == "invalid-tool-entry"));
     }
 
     #[test]

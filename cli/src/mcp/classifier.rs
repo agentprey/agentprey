@@ -3,8 +3,7 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 
 use crate::mcp::model::{
-    CapabilityConfidence, CapabilitySource, McpCapability, McpCapabilityAssessment,
-    McpParseWarning,
+    CapabilityConfidence, CapabilitySource, McpCapability, McpCapabilityAssessment, McpParseWarning,
 };
 
 pub fn classify_tool_capabilities(
@@ -12,7 +11,11 @@ pub fn classify_tool_capabilities(
     description: Option<&str>,
     input_schema: Option<&Value>,
     declared_capabilities: Option<&Value>,
-) -> (Vec<McpCapabilityAssessment>, Vec<String>, Vec<McpParseWarning>) {
+) -> (
+    Vec<McpCapabilityAssessment>,
+    Vec<String>,
+    Vec<McpParseWarning>,
+) {
     let mut warnings = Vec::new();
     let mut scores: BTreeMap<McpCapability, (CapabilitySource, CapabilityConfidence)> =
         BTreeMap::new();
@@ -127,11 +130,13 @@ pub fn classify_tool_capabilities(
 
     let capabilities = scores
         .into_iter()
-        .map(|(capability, (source, confidence))| McpCapabilityAssessment {
-            capability,
-            source,
-            confidence,
-        })
+        .map(
+            |(capability, (source, confidence))| McpCapabilityAssessment {
+                capability,
+                source,
+                confidence,
+            },
+        )
         .collect();
 
     (capabilities, uncertainty_flags, warnings)
@@ -179,7 +184,9 @@ fn schema_contains_text(value: &Value, needle: &str) -> bool {
     match value {
         Value::String(text) => text.to_ascii_lowercase().contains(needle),
         Value::Array(items) => items.iter().any(|item| schema_contains_text(item, needle)),
-        Value::Object(map) => map.values().any(|value| schema_contains_text(value, needle)),
+        Value::Object(map) => map
+            .values()
+            .any(|value| schema_contains_text(value, needle)),
         _ => false,
     }
 }
@@ -222,8 +229,8 @@ mod tests {
             assessment.capability == McpCapability::CommandExec
                 && assessment.confidence == CapabilityConfidence::High
         }));
-        assert!(capabilities.iter().any(|assessment| {
-            assessment.capability == McpCapability::NetworkEgress
-        }));
+        assert!(capabilities
+            .iter()
+            .any(|assessment| { assessment.capability == McpCapability::NetworkEgress }));
     }
 }

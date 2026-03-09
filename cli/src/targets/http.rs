@@ -183,7 +183,9 @@ fn summarize_analysis(
             "response matched the configured detection threshold: {}",
             truncate(response, 120)
         ),
-        FindingStatus::Resistant => "response did not match the configured detection threshold".to_string(),
+        FindingStatus::Resistant => {
+            "response did not match the configured detection threshold".to_string()
+        }
         FindingStatus::Error => truncate(response, 120),
     }
 }
@@ -193,7 +195,12 @@ fn vector_recommendation(vector: &Vector) -> String {
         .remediation
         .as_ref()
         .map(|remediation| remediation.summary.clone())
-        .unwrap_or_else(|| format!("Review '{}' and tighten the target's handling for this attack path.", vector.name))
+        .unwrap_or_else(|| {
+            format!(
+                "Review '{}' and tighten the target's handling for this attack path.",
+                vector.name
+            )
+        })
 }
 
 fn truncate(value: &str, max_chars: usize) -> String {

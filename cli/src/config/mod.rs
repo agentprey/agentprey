@@ -89,10 +89,11 @@ pub fn write_default_config(path: &Path, force: bool) -> Result<()> {
 }
 
 pub const DEFAULT_CONFIG_TEMPLATE: &str = r#"[target]
-# Optional target type: http | openclaw
+# Optional target type: http | openclaw | mcp
 # type = "http"
 
 # Required for config-driven scans
+# For mcp scans this should be a local JSON/YAML descriptor path.
 endpoint = "http://127.0.0.1:8787/chat"
 method = "POST"
 

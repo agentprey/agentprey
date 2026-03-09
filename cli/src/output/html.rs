@@ -59,6 +59,12 @@ fn render_html(outcome: &ScanOutcome) -> String {
         );
     }
 
+    let mcp_section = outcome
+        .mcp
+        .as_ref()
+        .map(render_mcp_section)
+        .unwrap_or_default();
+
     format!(
         "<!doctype html>
 <html lang=\"en\">
@@ -125,6 +131,7 @@ fn render_html(outcome: &ScanOutcome) -> String {
         {}
       </tbody>
     </table>
+    {}
   </div>
 </body>
 </html>",
@@ -138,6 +145,82 @@ fn render_html(outcome: &ScanOutcome) -> String {
         outcome.error_count,
         outcome.duration_ms,
         rows,
+        mcp_section,
+    )
+}
+
+fn render_mcp_section(metadata: &crate::mcp::model::McpScanMetadata) -> String {
+    let tools = metadata
+        .tools
+        .iter()
+        .map(|tool| {
+            let capabilities = if tool.capabilities.is_empty() {
+                "none".to_string()
+            } else {
+                tool.capabilities
+                    .iter()
+                    .map(|assessment| assessment.capability.as_str().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            format!(
+                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                escape_html(&tool.key),
+                escape_html(&tool.name),
+                escape_html(&capabilities),
+                escape_html(&tool.uncertainty_flags.join("; "))
+            )
+        })
+        .collect::<String>();
+
+    let warnings = if metadata.parse_warnings.is_empty() {
+        "<li>none</li>".to_string()
+    } else {
+        metadata
+            .parse_warnings
+            .iter()
+            .map(|warning| {
+                format!(
+                    "<li><code>{}</code>: {} ({})</li>",
+                    escape_html(&warning.code),
+                    escape_html(&warning.message),
+                    escape_html(&warning.path)
+                )
+            })
+            .collect::<String>()
+    };
+
+    format!(
+        "<section style=\"margin-top: 20px;\">
+  <h2>MCP Inventory</h2>
+  <div class=\"grid\">
+    <div class=\"card\"><div class=\"label\">Tools</div><div class=\"value\">{}</div></div>
+    <div class=\"card\"><div class=\"label\">Resources</div><div class=\"value\">{}</div></div>
+    <div class=\"card\"><div class=\"label\">Prompts</div><div class=\"value\">{}</div></div>
+    <div class=\"card\"><div class=\"label\">Warnings</div><div class=\"value\">{}</div></div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Tool Key</th>
+        <th>Name</th>
+        <th>Capabilities</th>
+        <th>Uncertainty</th>
+      </tr>
+    </thead>
+    <tbody>{}</tbody>
+  </table>
+  <div class=\"card\" style=\"margin-top: 12px;\">
+    <div class=\"label\">Parse Warnings</div>
+    <ul>{}</ul>
+  </div>
+</section>",
+        metadata.inventory.tool_count,
+        metadata.inventory.resource_count,
+        metadata.inventory.prompt_count,
+        metadata.inventory.parse_warning_count,
+        tools,
+        warnings,
     )
 }
 
@@ -200,7 +283,9 @@ mod tests {
         let output = temp.path().join("reports/scan.html");
 
         let outcome = ScanOutcome {
+            target_type: crate::cli::TargetType::Http,
             target: "http://127.0.0.1:8787/chat".to_string(),
+            mcp: None,
             total_vectors: 1,
             vulnerable_count: 1,
             resistant_count: 0,
@@ -218,6 +303,7 @@ mod tests {
                 error_count: 0,
             },
             findings: vec![FindingOutcome {
+                rule_id: "pi-direct-001".to_string(),
                 vector_id: "pi-direct-001".to_string(),
                 vector_name: "Basic Instruction Override".to_string(),
                 category: "prompt-injection".to_string(),
@@ -230,6 +316,12 @@ mod tests {
                 response: "Bearer [REDACTED]".to_string(),
                 analysis: None,
                 duration_ms: 10,
+                rationale: "Attempts to override or reveal protected instructions.".to_string(),
+                evidence_summary: "redacted response excerpt".to_string(),
+                recommendation: "Enforce non-overridable instruction boundaries.".to_string(),
+                tool_name: None,
+                capabilities: Vec::new(),
+                approval_sensitive: None,
             }],
             duration_ms: 12,
         };

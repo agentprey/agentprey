@@ -59,16 +59,25 @@ impl HttpTarget {
         settings: &ResolvedScanSettings,
     ) -> FindingOutcome {
         let vector_started = Instant::now();
+        let rule_id = vector.id.clone();
+        let vector_id = vector.id.clone();
+        let vector_name = vector.name.clone();
+        let category = vector.category.clone();
+        let subcategory = vector.subcategory.clone();
+        let severity = vector.severity.clone();
+        let rationale = vector.description.clone();
+        let recommendation = vector_recommendation(&vector);
 
         let payload = match vector.payloads.first().cloned() {
             Some(payload) => payload,
             None => {
                 return FindingOutcome {
-                    vector_id: vector.id,
-                    vector_name: vector.name,
-                    category: vector.category,
-                    subcategory: vector.subcategory,
-                    severity: vector.severity,
+                    rule_id,
+                    vector_id,
+                    vector_name,
+                    category,
+                    subcategory,
+                    severity,
                     payload_name: "missing".to_string(),
                     payload_prompt: "missing".to_string(),
                     status: FindingStatus::Error,
@@ -76,6 +85,12 @@ impl HttpTarget {
                     response: "vector payload list is empty".to_string(),
                     analysis: None,
                     duration_ms: vector_started.elapsed().as_millis(),
+                    rationale,
+                    evidence_summary: "vector payload list is empty".to_string(),
+                    recommendation,
+                    tool_name: None,
+                    capabilities: Vec::new(),
+                    approval_sensitive: None,
                 };
             }
         };
@@ -96,13 +111,16 @@ impl HttpTarget {
                     Verdict::Vulnerable => FindingStatus::Vulnerable,
                     Verdict::Resistant => FindingStatus::Resistant,
                 };
+                let evidence_summary =
+                    summarize_analysis(&exchange.extracted_response, &analysis, status);
 
                 FindingOutcome {
-                    vector_id: vector.id,
-                    vector_name: vector.name,
-                    category: vector.category,
-                    subcategory: vector.subcategory,
-                    severity: vector.severity,
+                    rule_id,
+                    vector_id,
+                    vector_name,
+                    category,
+                    subcategory,
+                    severity,
                     payload_name: payload.name,
                     payload_prompt: payload.prompt,
                     status,
@@ -110,14 +128,21 @@ impl HttpTarget {
                     response: maybe_redact(&exchange.extracted_response, settings.redact_responses),
                     analysis: Some(analysis),
                     duration_ms: vector_started.elapsed().as_millis(),
+                    rationale,
+                    evidence_summary,
+                    recommendation,
+                    tool_name: None,
+                    capabilities: Vec::new(),
+                    approval_sensitive: None,
                 }
             }
             Err(error) => FindingOutcome {
-                vector_id: vector.id,
-                vector_name: vector.name,
-                category: vector.category,
-                subcategory: vector.subcategory,
-                severity: vector.severity,
+                rule_id,
+                vector_id,
+                vector_name,
+                category,
+                subcategory,
+                severity,
                 payload_name: payload.name,
                 payload_prompt: payload.prompt,
                 status: FindingStatus::Error,
@@ -125,6 +150,12 @@ impl HttpTarget {
                 response: maybe_redact(&error.to_string(), settings.redact_responses),
                 analysis: None,
                 duration_ms: vector_started.elapsed().as_millis(),
+                rationale,
+                evidence_summary: error.to_string(),
+                recommendation,
+                tool_name: None,
+                capabilities: Vec::new(),
+                approval_sensitive: None,
             },
         }
     }
@@ -136,4 +167,47 @@ fn maybe_redact(input: &str, enabled: bool) -> String {
     } else {
         input.to_string()
     }
+}
+
+fn summarize_analysis(
+    response: &str,
+    analysis: &crate::analyzer::Analysis,
+    status: FindingStatus,
+) -> String {
+    if !analysis.indicator_hits.is_empty() {
+        return analysis.indicator_hits.join("; ");
+    }
+
+    match status {
+        FindingStatus::Vulnerable => format!(
+            "response matched the configured detection threshold: {}",
+            truncate(response, 120)
+        ),
+        FindingStatus::Resistant => {
+            "response did not match the configured detection threshold".to_string()
+        }
+        FindingStatus::Error => truncate(response, 120),
+    }
+}
+
+fn vector_recommendation(vector: &Vector) -> String {
+    vector
+        .remediation
+        .as_ref()
+        .map(|remediation| remediation.summary.clone())
+        .unwrap_or_else(|| {
+            format!(
+                "Review '{}' and tighten the target's handling for this attack path.",
+                vector.name
+            )
+        })
+}
+
+fn truncate(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+
+    let clipped: String = value.chars().take(max_chars).collect();
+    format!("{clipped}...")
 }

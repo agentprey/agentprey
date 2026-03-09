@@ -1,4 +1,5 @@
 use clap::{ArgAction, Args, Parser, Subcommand};
+use std::fmt;
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -49,11 +50,24 @@ pub struct InitArgs {
     pub force: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, serde::Deserialize, serde::Serialize,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum TargetType {
     Http,
     Openclaw,
+    Mcp,
+}
+
+impl fmt::Display for TargetType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Http => f.write_str("http"),
+            Self::Openclaw => f.write_str("openclaw"),
+            Self::Mcp => f.write_str("mcp"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -66,7 +80,7 @@ pub enum ScanUi {
 
 #[derive(Debug, Clone, Args)]
 pub struct ScanArgs {
-    /// Target HTTP endpoint URL or local OpenClaw project path
+    /// Target HTTP endpoint URL, local OpenClaw project path, or local MCP descriptor file path
     #[arg(long)]
     pub target: Option<String>,
 
@@ -141,7 +155,7 @@ pub struct ScanArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct CenterArgs {
-    /// Optional target HTTP endpoint URL or local OpenClaw project path
+    /// Optional target HTTP endpoint URL, local OpenClaw project path, or local MCP descriptor file path
     #[arg(long)]
     pub target: Option<String>,
 

@@ -35,6 +35,9 @@ impl ResolvedTarget {
                     openclaw::OpenClawTarget::from_path(Path::new(&settings.target))?,
                 )))
             }
+            TargetType::Mcp => Err(anyhow!(
+                "mcp targets use a dedicated scan path and should not resolve through the generic target executor"
+            )),
         }
     }
 

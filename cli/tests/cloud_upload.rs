@@ -69,7 +69,9 @@ fn sample_settings() -> ResolvedScanSettings {
 
 fn sample_outcome() -> ScanOutcome {
     ScanOutcome {
+        target_type: TargetType::Openclaw,
         target: "./fixtures/openclaw-demo-project".to_string(),
+        mcp: None,
         total_vectors: 1,
         vulnerable_count: 1,
         resistant_count: 0,
@@ -87,6 +89,7 @@ fn sample_outcome() -> ScanOutcome {
             error_count: 0,
         },
         findings: vec![FindingOutcome {
+            rule_id: "oc-perm-001".to_string(),
             vector_id: "oc-perm-001".to_string(),
             vector_name: "Overprivileged Tool Access".to_string(),
             category: "openclaw".to_string(),
@@ -99,6 +102,12 @@ fn sample_outcome() -> ScanOutcome {
             response: "shell.exec is enabled in permissions.toml".to_string(),
             analysis: None,
             duration_ms: 18,
+            rationale: "Detected overprivileged tool access.".to_string(),
+            evidence_summary: "shell.exec is enabled in permissions.toml".to_string(),
+            recommendation: "Reduce tool permissions.".to_string(),
+            tool_name: None,
+            capabilities: Vec::new(),
+            approval_sensitive: None,
         }],
         duration_ms: 31,
     }

@@ -10,7 +10,7 @@ use crate::{
     cli::TargetType,
     mcp::{
         loader::load_descriptor,
-        model::{McpCapability, McpScanMetadata},
+        model::{CapabilityConfidence, McpCapability, McpScanMetadata, McpTool},
     },
     scan::{
         FindingEvidence, FindingOutcome, FindingOutcomeInput, FindingStatus, ResolvedScanSettings,
@@ -22,7 +22,7 @@ use crate::{
 
 pub const MCP_VECTOR_CATEGORY: &str = "mcp-security";
 
-const MCP_RULES: [McpRule; 3] = [
+const MCP_RULES: [McpRule; 4] = [
     McpRule {
         id: "mcp-tool-001",
         name: "Dangerous Capability Exposure",
@@ -52,6 +52,16 @@ const MCP_RULES: [McpRule; 3] = [
         recommendation: "Prefer local MCP transports for sensitive tools, or document and verify the trust boundary of every remote MCP endpoint.",
         mitigation_tags: &["remote-trust-boundary"],
         evaluator: evaluate_remote_trust_boundary,
+    },
+    McpRule {
+        id: "mcp-tool-004",
+        name: "Dangerous Tool Approval Gap",
+        subcategory: "approval",
+        severity: Severity::High,
+        rationale: "Dangerous MCP tools should require explicit human approval before execution; absent or unknown approval requirements leave sensitive actions open to prompt-driven misuse.",
+        recommendation: "Set `approval_required=true` for dangerous MCP tools such as command execution, file writes, secrets access, or browser control, or remove those tools from the server.",
+        mitigation_tags: &["approval-gating", "least-privilege"],
+        evaluator: evaluate_dangerous_tool_approval_gap,
     },
 ];
 
@@ -233,6 +243,60 @@ fn evaluate_dangerous_capability_exposure(metadata: &McpScanMetadata) -> McpRule
     )
 }
 
+fn evaluate_dangerous_tool_approval_gap(metadata: &McpScanMetadata) -> McpRuleEvaluation {
+    let mut matching = Vec::new();
+
+    for tool in &metadata.tools {
+        let dangerous = approval_gap_capabilities(tool);
+        if dangerous.is_empty() || tool.approval_required == Some(true) {
+            continue;
+        }
+
+        matching.push((tool.name.clone(), dangerous, tool.approval_required));
+    }
+
+    if matching.is_empty() {
+        return (
+            FindingStatus::Resistant,
+            format!(
+                "No dangerous MCP tools were missing explicit approval across {} inventoried MCP tools.",
+                metadata.inventory.tool_count
+            ),
+            None,
+            Vec::new(),
+            None,
+        );
+    }
+
+    let evidence = matching
+        .iter()
+        .map(|(tool, capabilities, approval_required)| {
+            let approval_state = match approval_required {
+                Some(false) => "approval_required=false",
+                Some(true) => "approval_required=true",
+                None => "approval_required=unknown",
+            };
+            format!("{tool} ({approval_state}): {}", capabilities.join(", "))
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    let tool_name = matching.first().map(|(tool, _, _)| tool.clone());
+    let capabilities = dedupe_strings(
+        &matching
+            .iter()
+            .flat_map(|(_, capabilities, _)| capabilities.clone())
+            .collect::<Vec<_>>(),
+    );
+
+    (
+        FindingStatus::Vulnerable,
+        format!("Dangerous MCP tools lack explicit approval gating: {evidence}."),
+        tool_name,
+        capabilities,
+        Some(false),
+    )
+}
+
 fn evaluate_capability_combination_exposure(metadata: &McpScanMetadata) -> McpRuleEvaluation {
     let mut has_file_write = Vec::new();
     let mut has_network_egress = Vec::new();
@@ -328,4 +392,21 @@ fn evaluate_remote_trust_boundary(metadata: &McpScanMetadata) -> McpRuleEvaluati
             None,
         )
     }
+}
+
+fn approval_gap_capabilities(tool: &McpTool) -> Vec<String> {
+    tool.capabilities
+        .iter()
+        .filter(|assessment| {
+            assessment.confidence != CapabilityConfidence::Low
+                && matches!(
+                    assessment.capability,
+                    McpCapability::CommandExec
+                        | McpCapability::SecretsRead
+                        | McpCapability::BrowserControl
+                        | McpCapability::FileWrite
+                )
+        })
+        .map(|assessment| assessment.capability.as_str().to_string())
+        .collect()
 }

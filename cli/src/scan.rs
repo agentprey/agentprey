@@ -73,11 +73,50 @@ pub struct FindingOutcome {
     pub evidence_summary: String,
     pub recommendation: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub attack_surface: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub observed_capabilities: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub repro_steps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mitigation_tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_name: Option<String>,
     #[serde(default)]
     pub capabilities: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub approval_sensitive: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FindingEvidence {
+    pub attack_surface: Option<String>,
+    pub observed_capabilities: Vec<String>,
+    pub evidence_kind: Option<String>,
+    pub repro_steps: Vec<String>,
+    pub mitigation_tags: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FindingOutcomeInput {
+    pub rule_id: String,
+    pub vector_id: String,
+    pub vector_name: String,
+    pub category: String,
+    pub subcategory: String,
+    pub severity: Severity,
+    pub payload_name: String,
+    pub payload_prompt: String,
+    pub status: FindingStatus,
+    pub status_code: Option<u16>,
+    pub response: String,
+    pub analysis: Option<Analysis>,
+    pub duration_ms: u128,
+    pub rationale: String,
+    pub evidence_summary: String,
+    pub recommendation: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -140,6 +179,58 @@ enum ConfigLookup {
 impl ScanOutcome {
     pub fn has_vulnerabilities(&self) -> bool {
         self.vulnerable_count > 0
+    }
+}
+
+impl FindingOutcome {
+    pub fn new(input: FindingOutcomeInput) -> Self {
+        Self {
+            rule_id: input.rule_id,
+            vector_id: input.vector_id,
+            vector_name: input.vector_name,
+            category: input.category,
+            subcategory: input.subcategory,
+            severity: input.severity,
+            payload_name: input.payload_name,
+            payload_prompt: input.payload_prompt,
+            status: input.status,
+            status_code: input.status_code,
+            response: input.response,
+            analysis: input.analysis,
+            duration_ms: input.duration_ms,
+            rationale: input.rationale,
+            evidence_summary: input.evidence_summary,
+            recommendation: input.recommendation,
+            attack_surface: None,
+            observed_capabilities: Vec::new(),
+            evidence_kind: None,
+            repro_steps: Vec::new(),
+            mitigation_tags: Vec::new(),
+            tool_name: None,
+            capabilities: Vec::new(),
+            approval_sensitive: None,
+        }
+    }
+
+    pub fn with_evidence(mut self, evidence: FindingEvidence) -> Self {
+        self.attack_surface = evidence.attack_surface;
+        self.observed_capabilities = evidence.observed_capabilities;
+        self.evidence_kind = evidence.evidence_kind;
+        self.repro_steps = evidence.repro_steps;
+        self.mitigation_tags = evidence.mitigation_tags;
+        self
+    }
+
+    pub fn with_legacy_mcp_fields(
+        mut self,
+        tool_name: Option<String>,
+        capabilities: Vec<String>,
+        approval_sensitive: Option<bool>,
+    ) -> Self {
+        self.tool_name = tool_name;
+        self.capabilities = capabilities;
+        self.approval_sensitive = approval_sensitive;
+        self
     }
 }
 
@@ -617,7 +708,7 @@ where
     while let Some(task) = tasks.join_next().await {
         match task {
             Ok(finding) => findings.push(finding),
-            Err(error) => findings.push(FindingOutcome {
+            Err(error) => findings.push(FindingOutcome::new(FindingOutcomeInput {
                 rule_id: "internal-runtime".to_string(),
                 vector_id: "internal-runtime".to_string(),
                 vector_name: "Task Join Error".to_string(),
@@ -631,13 +722,11 @@ where
                 response: format!("task join failure: {error}"),
                 analysis: None,
                 duration_ms: 0,
-                rationale: "The scan runtime failed before a rule or vector could complete.".to_string(),
+                rationale:
+                    "The scan runtime failed before a rule or vector could complete.".to_string(),
                 evidence_summary: format!("task join failure: {error}"),
                 recommendation: "Re-run the scan and inspect the runtime failure before trusting the reported results.".to_string(),
-                tool_name: None,
-                capabilities: Vec::new(),
-                approval_sensitive: None,
-            }),
+            })),
         };
 
         let finding = findings.last().expect("finding should exist after push");

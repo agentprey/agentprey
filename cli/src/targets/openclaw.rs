@@ -6,7 +6,7 @@ use regex::Regex;
 use crate::{
     analyzer::{analyze_response_for_vector, Verdict},
     redaction::redact_text,
-    scan::{FindingOutcome, FindingStatus, ResolvedScanSettings},
+    scan::{FindingOutcome, FindingOutcomeInput, FindingStatus, ResolvedScanSettings},
     vectors::model::Vector,
 };
 
@@ -90,7 +90,7 @@ impl OpenClawTarget {
         let payload = match vector.payloads.first().cloned() {
             Some(payload) => payload,
             None => {
-                return FindingOutcome {
+                return FindingOutcome::new(FindingOutcomeInput {
                     rule_id,
                     vector_id,
                     vector_name,
@@ -107,10 +107,7 @@ impl OpenClawTarget {
                     rationale,
                     evidence_summary: "vector payload list is empty".to_string(),
                     recommendation,
-                    tool_name: None,
-                    capabilities: Vec::new(),
-                    approval_sensitive: None,
-                };
+                });
             }
         };
 
@@ -123,7 +120,7 @@ impl OpenClawTarget {
         let evidence = self.collect_evidence(&vector);
         let response = self.synthesize_response(&vector, status, &evidence);
 
-        FindingOutcome {
+        FindingOutcome::new(FindingOutcomeInput {
             rule_id,
             vector_id,
             vector_name,
@@ -144,10 +141,7 @@ impl OpenClawTarget {
                 evidence.join("; ")
             },
             recommendation,
-            tool_name: None,
-            capabilities: Vec::new(),
-            approval_sensitive: None,
-        }
+        })
     }
 
     fn collect_evidence(&self, vector: &Vector) -> Vec<String> {

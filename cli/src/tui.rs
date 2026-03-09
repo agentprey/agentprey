@@ -2297,7 +2297,8 @@ mod tests {
     use crate::{
         cli::TargetType,
         scan::{
-            FindingOutcome, FindingStatus, ResolvedScanSettings, ScanOutcome, ScanSettingsInput,
+            FindingOutcome, FindingOutcomeInput, FindingStatus, ResolvedScanSettings, ScanOutcome,
+            ScanSettingsInput,
         },
         scorer::{Grade, ScoreSummary, SeverityCounts},
         vectors::model::Severity,
@@ -2324,7 +2325,7 @@ mod tests {
     }
 
     fn finding(id: usize, status: FindingStatus) -> FindingOutcome {
-        FindingOutcome {
+        FindingOutcome::new(FindingOutcomeInput {
             rule_id: format!("pi-{id:03}"),
             vector_id: format!("pi-{id:03}"),
             vector_name: format!("Vector {id}"),
@@ -2347,10 +2348,7 @@ mod tests {
             rationale: "test rationale".to_string(),
             evidence_summary: "test evidence".to_string(),
             recommendation: "test recommendation".to_string(),
-            tool_name: None,
-            capabilities: Vec::new(),
-            approval_sensitive: None,
-        }
+        })
     }
 
     #[test]

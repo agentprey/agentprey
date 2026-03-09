@@ -121,13 +121,13 @@ fn grade_from_counts(
 #[cfg(test)]
 mod tests {
     use crate::{
-        scan::{FindingOutcome, FindingStatus},
+        scan::{FindingOutcome, FindingOutcomeInput, FindingStatus},
         scorer::{score_findings, Grade},
         vectors::model::Severity,
     };
 
     fn finding(id: &str, severity: Severity, status: FindingStatus) -> FindingOutcome {
-        FindingOutcome {
+        FindingOutcome::new(FindingOutcomeInput {
             rule_id: id.to_string(),
             vector_id: id.to_string(),
             vector_name: id.to_string(),
@@ -144,10 +144,7 @@ mod tests {
             rationale: "test rationale".to_string(),
             evidence_summary: "test evidence".to_string(),
             recommendation: "test recommendation".to_string(),
-            tool_name: None,
-            capabilities: Vec::new(),
-            approval_sensitive: None,
-        }
+        })
     }
 
     #[test]

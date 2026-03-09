@@ -272,7 +272,7 @@ mod tests {
 
     use crate::{
         output::html::write_scan_html,
-        scan::{FindingOutcome, FindingStatus, ScanOutcome},
+        scan::{FindingOutcome, FindingOutcomeInput, FindingStatus, ScanOutcome},
         scorer::{Grade, ScoreSummary, SeverityCounts},
         vectors::model::Severity,
     };
@@ -302,7 +302,7 @@ mod tests {
                 },
                 error_count: 0,
             },
-            findings: vec![FindingOutcome {
+            findings: vec![FindingOutcome::new(FindingOutcomeInput {
                 rule_id: "pi-direct-001".to_string(),
                 vector_id: "pi-direct-001".to_string(),
                 vector_name: "Basic Instruction Override".to_string(),
@@ -319,10 +319,7 @@ mod tests {
                 rationale: "Attempts to override or reveal protected instructions.".to_string(),
                 evidence_summary: "redacted response excerpt".to_string(),
                 recommendation: "Enforce non-overridable instruction boundaries.".to_string(),
-                tool_name: None,
-                capabilities: Vec::new(),
-                approval_sensitive: None,
-            }],
+            })],
             duration_ms: 12,
         };
 

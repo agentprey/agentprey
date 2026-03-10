@@ -22,7 +22,32 @@ use crate::{
 
 pub const MCP_VECTOR_CATEGORY: &str = "mcp-security";
 
-const MCP_RULES: [McpRule; 4] = [
+const DANGEROUS_PROMPTABILITY_INDICATORS: [&str; 22] = [
+    "system prompt",
+    "hidden instructions",
+    "developer instructions",
+    "internal policy",
+    "reveal prompt",
+    "show prompt",
+    "ignore approval",
+    "skip approval",
+    "bypass approval",
+    "ignore policy",
+    "bypass policy",
+    "override restrictions",
+    "read secrets",
+    "dump secrets",
+    "show tokens",
+    "read api keys",
+    "export credentials",
+    "execute any command",
+    "run arbitrary command",
+    "run anything",
+    "unrestricted shell",
+    "full filesystem access",
+];
+
+const MCP_RULES: [McpRule; 5] = [
     McpRule {
         id: "mcp-tool-001",
         name: "Dangerous Capability Exposure",
@@ -62,6 +87,20 @@ const MCP_RULES: [McpRule; 4] = [
         recommendation: "Set `approval_required=true` for dangerous MCP tools such as command execution, file writes, secrets access, or browser control, or remove those tools from the server.",
         mitigation_tags: &["approval-gating", "least-privilege"],
         evaluator: evaluate_dangerous_tool_approval_gap,
+    },
+    McpRule {
+        id: "mcp-tool-005",
+        name: "Dangerous Tool Description Promptability",
+        subcategory: "metadata",
+        severity: Severity::High,
+        rationale: "Explicitly dangerous MCP tool names or descriptions can invite agents to reveal hidden instructions, bypass approval or policy controls, retrieve secrets, or execute unrestricted actions.",
+        recommendation: "Remove dangerous promptability language from MCP tool metadata, narrow tool descriptions to legitimate behavior, and require approval gating for sensitive actions.",
+        mitigation_tags: &[
+            "tool-metadata-hardening",
+            "prompt-surface-reduction",
+            "approval-gating",
+        ],
+        evaluator: evaluate_dangerous_tool_description_promptability,
     },
 ];
 
@@ -180,6 +219,60 @@ fn dedupe_strings(values: &[String]) -> Vec<String> {
         .collect()
 }
 
+fn normalize_metadata_text(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn promptability_matches(tool: &McpTool) -> Vec<String> {
+    let name = format!(" {} ", normalize_metadata_text(&tool.name));
+    let description = format!(
+        " {} ",
+        tool.description
+            .as_deref()
+            .map(normalize_metadata_text)
+            .unwrap_or_default()
+    );
+    let mut matches = Vec::new();
+
+    for indicator in DANGEROUS_PROMPTABILITY_INDICATORS {
+        let padded_indicator = format!(" {indicator} ");
+        if name.contains(&padded_indicator) || description.contains(&padded_indicator) {
+            matches.push(indicator.to_string());
+        }
+    }
+
+    dedupe_strings(&matches)
+}
+
+fn promptability_capabilities(tool: &McpTool) -> Vec<String> {
+    tool.capabilities
+        .iter()
+        .filter(|assessment| {
+            assessment.confidence == CapabilityConfidence::High
+                && matches!(
+                    assessment.capability,
+                    McpCapability::CommandExec
+                        | McpCapability::SecretsRead
+                        | McpCapability::BrowserControl
+                        | McpCapability::FileWrite
+                )
+        })
+        .map(|assessment| assessment.capability.as_str().to_string())
+        .collect()
+}
+
 fn evaluate_dangerous_capability_exposure(metadata: &McpScanMetadata) -> McpRuleEvaluation {
     let mut matching = Vec::new();
     for tool in &metadata.tools {
@@ -294,6 +387,69 @@ fn evaluate_dangerous_tool_approval_gap(metadata: &McpScanMetadata) -> McpRuleEv
         tool_name,
         capabilities,
         Some(false),
+    )
+}
+
+fn evaluate_dangerous_tool_description_promptability(
+    metadata: &McpScanMetadata,
+) -> McpRuleEvaluation {
+    let mut matching = Vec::new();
+
+    for tool in &metadata.tools {
+        let indicators = promptability_matches(tool);
+        if indicators.is_empty() {
+            continue;
+        }
+
+        let capabilities = promptability_capabilities(tool);
+        if capabilities.is_empty() {
+            continue;
+        }
+
+        matching.push((
+            tool.name.clone(),
+            indicators,
+            capabilities,
+            tool.approval_required,
+        ));
+    }
+
+    if matching.is_empty() {
+        return (
+            FindingStatus::Resistant,
+            format!(
+                "No dangerous promptability markers were found in MCP tool names or descriptions across {} inventoried MCP tools.",
+                metadata.inventory.tool_count
+            ),
+            None,
+            Vec::new(),
+            None,
+        );
+    }
+
+    let evidence = matching
+        .iter()
+        .map(|(tool, indicators, _, _)| format!("{tool}: {}", indicators.join(", ")))
+        .collect::<Vec<_>>()
+        .join("; ");
+    let tool_name = matching.first().map(|(tool, _, _, _)| tool.clone());
+    let capabilities = dedupe_strings(
+        &matching
+            .iter()
+            .flat_map(|(_, _, capabilities, _)| capabilities.clone())
+            .collect::<Vec<_>>(),
+    );
+
+    (
+        FindingStatus::Vulnerable,
+        format!("Dangerous MCP tool metadata promptability markers detected: {evidence}."),
+        tool_name,
+        capabilities,
+        Some(
+            matching
+                .iter()
+                .all(|(_, _, _, approval_required)| *approval_required == Some(true)),
+        ),
     )
 }
 

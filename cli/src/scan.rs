@@ -38,6 +38,7 @@ const DEFAULT_RATE_LIMIT_RPS: u32 = 10;
 const DEFAULT_REDACT_RESPONSES: bool = true;
 pub const OPENCLAW_VECTOR_CATEGORY: &str = "openclaw";
 pub const TOOL_MISUSE_VECTOR_CATEGORY: &str = "tool-misuse";
+pub const APPROVAL_BYPASS_VECTOR_CATEGORY: &str = "approval-bypass";
 pub const MCP_VECTOR_CATEGORY: &str = mcp::MCP_VECTOR_CATEGORY;
 
 #[derive(Debug, Clone, Serialize)]
@@ -530,7 +531,8 @@ fn validate_category_for_target(target_type: TargetType, category: Option<&str>)
 
     if target_type == TargetType::Http
         && (category.eq_ignore_ascii_case(OPENCLAW_VECTOR_CATEGORY)
-            || category.eq_ignore_ascii_case(TOOL_MISUSE_VECTOR_CATEGORY))
+            || category.eq_ignore_ascii_case(TOOL_MISUSE_VECTOR_CATEGORY)
+            || category.eq_ignore_ascii_case(APPROVAL_BYPASS_VECTOR_CATEGORY))
     {
         return Err(anyhow!(
             "category '{}' requires `agentprey scan --type openclaw`",
@@ -541,11 +543,13 @@ fn validate_category_for_target(target_type: TargetType, category: Option<&str>)
     if target_type == TargetType::Openclaw
         && !category.eq_ignore_ascii_case(OPENCLAW_VECTOR_CATEGORY)
         && !category.eq_ignore_ascii_case(TOOL_MISUSE_VECTOR_CATEGORY)
+        && !category.eq_ignore_ascii_case(APPROVAL_BYPASS_VECTOR_CATEGORY)
     {
         return Err(anyhow!(
-            "openclaw scans currently support category '{}' or '{}' or no category filter",
+            "openclaw scans currently support category '{}' or '{}' or '{}' or no category filter",
             OPENCLAW_VECTOR_CATEGORY,
-            TOOL_MISUSE_VECTOR_CATEGORY
+            TOOL_MISUSE_VECTOR_CATEGORY,
+            APPROVAL_BYPASS_VECTOR_CATEGORY
         ));
     }
 
@@ -616,10 +620,11 @@ fn filter_vectors_for_settings(vectors: &mut Vec<LoadedVector>, settings: &Resol
 fn vector_is_compatible_with_target(category: &str, target_type: TargetType) -> bool {
     let is_openclaw = category.eq_ignore_ascii_case(OPENCLAW_VECTOR_CATEGORY);
     let is_tool_misuse = category.eq_ignore_ascii_case(TOOL_MISUSE_VECTOR_CATEGORY);
+    let is_approval_bypass = category.eq_ignore_ascii_case(APPROVAL_BYPASS_VECTOR_CATEGORY);
     let is_mcp = category.eq_ignore_ascii_case(MCP_VECTOR_CATEGORY);
     match target_type {
-        TargetType::Http => !is_openclaw && !is_tool_misuse && !is_mcp,
-        TargetType::Openclaw => is_openclaw || is_tool_misuse,
+        TargetType::Http => !is_openclaw && !is_tool_misuse && !is_approval_bypass && !is_mcp,
+        TargetType::Openclaw => is_openclaw || is_tool_misuse || is_approval_bypass,
         TargetType::Mcp => is_mcp,
     }
 }
@@ -900,7 +905,8 @@ mod tests {
         scan::{
             filter_vectors_for_settings, load_vectors_for_scan, resolve_scan_settings,
             resolve_scan_settings_from_input, seed_scan_settings_input_for_center,
-            ScanSettingsInput, OPENCLAW_VECTOR_CATEGORY,
+            ScanSettingsInput, APPROVAL_BYPASS_VECTOR_CATEGORY, OPENCLAW_VECTOR_CATEGORY,
+            TOOL_MISUSE_VECTOR_CATEGORY,
         },
     };
 
@@ -1279,6 +1285,34 @@ endpoint = "./fixture"
     }
 
     #[test]
+    fn allows_approval_bypass_category_for_openclaw_scans() {
+        let temp = tempdir().expect("tempdir should be created");
+        let args = ScanArgs {
+            target: Some(temp.path().display().to_string()),
+            target_type: TargetType::Openclaw,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: None,
+            retries: None,
+            retry_backoff_ms: None,
+            max_concurrent: None,
+            rate_limit_rps: None,
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: Some(temp.path().join("vectors")),
+            category: Some("approval-bypass".to_string()),
+            json_out: None,
+            html_out: None,
+            upload: false,
+            config: None,
+            ui: ScanUi::Plain,
+        };
+
+        let resolved = resolve_scan_settings(&args).expect("approval-bypass should be allowed");
+        assert_eq!(resolved.category.as_deref(), Some("approval-bypass"));
+    }
+
+    #[test]
     fn rejects_tool_misuse_category_for_http_scans() {
         let temp = tempdir().expect("tempdir should be created");
         let args = ScanArgs {
@@ -1307,6 +1341,37 @@ endpoint = "./fixture"
         assert!(error
             .to_string()
             .contains("category 'tool-misuse' requires `agentprey scan --type openclaw`"));
+    }
+
+    #[test]
+    fn rejects_approval_bypass_category_for_http_scans() {
+        let temp = tempdir().expect("tempdir should be created");
+        let args = ScanArgs {
+            target: Some("http://127.0.0.1:8787/chat".to_string()),
+            target_type: TargetType::Http,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: None,
+            retries: None,
+            retry_backoff_ms: None,
+            max_concurrent: None,
+            rate_limit_rps: None,
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: Some(temp.path().join("vectors")),
+            category: Some("approval-bypass".to_string()),
+            json_out: None,
+            html_out: None,
+            upload: false,
+            config: None,
+            ui: ScanUi::Plain,
+        };
+
+        let error =
+            resolve_scan_settings(&args).expect_err("http approval-bypass category should fail");
+        assert!(error
+            .to_string()
+            .contains("category 'approval-bypass' requires `agentprey scan --type openclaw`"));
     }
 
     #[test]
@@ -1428,6 +1493,68 @@ endpoint = "./fixture"
             vec![
                 OPENCLAW_VECTOR_CATEGORY.to_string(),
                 "tool-misuse".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn filters_vectors_to_openclaw_tool_misuse_and_approval_bypass_for_openclaw_target() {
+        let temp = tempdir().expect("tempdir should be created");
+        let root = temp.path().join("vectors");
+        write_vector(
+            &root,
+            "prompt-injection/direct/pi-001.yaml",
+            "pi-001",
+            "prompt-injection",
+        );
+        write_vector(
+            &root,
+            "openclaw/permissions/oc-001.yaml",
+            "oc-001",
+            OPENCLAW_VECTOR_CATEGORY,
+        );
+        write_vector(
+            &root,
+            "tool-misuse/openclaw/tm-001.yaml",
+            "tm-001",
+            TOOL_MISUSE_VECTOR_CATEGORY,
+        );
+        write_vector(
+            &root,
+            "approval-bypass/openclaw/ab-001.yaml",
+            "ab-001",
+            APPROVAL_BYPASS_VECTOR_CATEGORY,
+        );
+
+        let mut loaded = load_vectors_for_scan(&root, None).expect("vectors should load");
+        let settings = super::ResolvedScanSettings {
+            target_type: TargetType::Openclaw,
+            target: temp.path().display().to_string(),
+            http: None,
+            timeout_seconds: 30,
+            retries: 2,
+            retry_backoff_ms: 250,
+            max_concurrent: 2,
+            rate_limit_rps: 10,
+            redact_responses: true,
+            vectors_dir: root,
+            category: None,
+            json_out: None,
+            html_out: None,
+        };
+
+        filter_vectors_for_settings(&mut loaded, &settings);
+        let mut categories = loaded
+            .iter()
+            .map(|loaded| loaded.vector.category.clone())
+            .collect::<Vec<_>>();
+        categories.sort();
+        assert_eq!(
+            categories,
+            vec![
+                APPROVAL_BYPASS_VECTOR_CATEGORY.to_string(),
+                OPENCLAW_VECTOR_CATEGORY.to_string(),
+                TOOL_MISUSE_VECTOR_CATEGORY.to_string()
             ]
         );
     }

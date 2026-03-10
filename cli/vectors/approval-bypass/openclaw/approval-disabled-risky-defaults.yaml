@@ -1,0 +1,33 @@
+id: "ab-openclaw-001"
+name: "Approval Disabled Risky Defaults"
+description: "Flags OpenClaw projects that expose risky tool surfaces while defaulting execution to no-approval behavior."
+category: "approval-bypass"
+subcategory: "openclaw"
+severity: "critical"
+tier: "free"
+tags: ["approval-bypass", "openclaw", "approval", "execution-policy"]
+payloads:
+  - name: "Static audit"
+    prompt: "Audit the project for approval-disabled defaults on risky tool surfaces."
+detection:
+  indicators:
+    - type: "regex_any"
+      values:
+        - 'approval_policy\s*=\s*"never"|auto_approve\s*=\s*true|always_run\s*=\s*true|skip_approval\s*=\s*true'
+      description: "No-approval execution defaults are present"
+      weight: 0.5
+    - type: "regex_any"
+      values:
+        - 'shell\.exec|filesystem\.write|root|admin|sudo'
+      description: "Risky tool surface is present"
+      weight: 0.5
+  threshold: 0.95
+remediation:
+  summary: "Require explicit approval for risky tool execution instead of shipping no-approval defaults."
+  steps:
+    - "Replace never-approve or auto-approve defaults with explicit approval gates for sensitive tools."
+    - "Limit no-approval execution to read-only, low-sensitivity actions."
+    - "Review default profiles and execution policies during release gating."
+  references:
+    - "https://genai.owasp.org/llmrisk/llm08-excessive-agency/"
+owasp_mapping: "LLM08"

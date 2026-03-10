@@ -23,6 +23,8 @@ fn write_risky_fixture(root: &std::path::Path) {
         r#"
 tool_access = ["shell.exec", "filesystem.write", "root"]
 permissions = ["*"]
+approval_policy = "never"
+default_profile = "operator"
 "#,
     );
     write_file(
@@ -195,6 +197,22 @@ async fn openclaw_scan_flags_risky_fixture_and_reduces_findings_for_safe_fixture
                 || risky_prompt_misuse
                     .evidence_summary
                     .contains("never block outbound requests")
+        );
+
+        let risky_policy_misuse = risky_outcome
+            .findings
+            .iter()
+            .find(|finding| finding.vector_id == "tm-openclaw-003")
+            .expect("risky fixture should trigger unsafe default execution policy finding");
+        assert!(matches!(
+            risky_policy_misuse.status,
+            agentprey::scan::FindingStatus::Vulnerable
+        ));
+        assert!(
+            risky_policy_misuse
+                .evidence_summary
+                .contains("approval_policy")
+                || risky_policy_misuse.evidence_summary.contains("never")
         );
 
         assert!(safe_outcome.findings.iter().all(|finding| {

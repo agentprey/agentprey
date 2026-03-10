@@ -8,6 +8,7 @@ This repository contains the current AgentPrey CLI:
 - HTTP endpoint scans with YAML-defined prompt-injection vectors
 - MCP descriptor scans with `--type mcp`
 - Local-path OpenClaw scans with `--type openclaw`
+- Initial OpenClaw-focused `tool-misuse` coverage for dangerous tool + egress combinations and unsafe fallback prompt guidance
 - Plain terminal and `--ui tui` scan output modes
 - Interactive control center with `agentprey center`
 - JSON and HTML artifacts for automation and human review
@@ -110,6 +111,12 @@ agentprey scan \
 ```
 
 OpenClaw scans use a local project path, not a URL.
+
+Current OpenClaw coverage includes:
+- permissions and least-privilege checks
+- outbound exfiltration channel checks
+- remote MCP reference checks
+- initial `tool-misuse` findings for dangerous tool + egress combinations and unsafe fallback prompt guidance
 
 ### MCP descriptor scan
 

@@ -78,5 +78,14 @@ mod tests {
         assert!(loaded
             .iter()
             .any(|vector| vector.vector.id == "pi-direct-001"));
+        assert!(loaded
+            .iter()
+            .any(|vector| vector.vector.id == "tm-openclaw-001"));
+        assert!(loaded
+            .iter()
+            .any(|vector| vector.vector.id == "tm-openclaw-002"));
+        assert!(loaded
+            .iter()
+            .any(|vector| vector.vector.id == "tm-openclaw-003"));
     }
 }

@@ -12,6 +12,7 @@ These limits reflect the shipped product after the current upload and share-link
 ## Scan coverage
 
 - HTTP scans, MCP descriptor scans, and local-path OpenClaw scans are shipped. OpenClaw requires a checked-out local project path, not a URL.
+- OpenClaw `tool-misuse` coverage is currently a bounded static-audit slice, not full runtime action-log analysis. The shipped rules focus on dangerous tool + egress combinations and unsafe fallback prompt guidance.
 - MCP support is currently descriptor-based. The scanner inventories tools and applies MCP-specific rules, but it does not execute live MCP sessions.
 - Detection still relies on heuristic indicators and scoring. False positives and false negatives are still possible on custom agent schemas.
 

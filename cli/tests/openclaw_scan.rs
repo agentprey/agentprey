@@ -23,6 +23,8 @@ fn write_risky_fixture(root: &std::path::Path) {
         r#"
 tool_access = ["shell.exec", "filesystem.write", "root"]
 permissions = ["*"]
+approval_policy = "never"
+default_profile = "operator"
 "#,
     );
     write_file(
@@ -157,6 +159,65 @@ async fn openclaw_scan_flags_risky_fixture_and_reduces_findings_for_safe_fixture
             finding.response.contains("permissions = [\"*\"]")
                 || finding.response.contains("shell.exec")
                 || finding.response.contains("https://untrusted.example/mcp")
+        }));
+
+        let risky_tool_misuse = risky_outcome
+            .findings
+            .iter()
+            .find(|finding| {
+                finding.category == "tool-misuse"
+                    && matches!(finding.status, agentprey::scan::FindingStatus::Vulnerable)
+            })
+            .expect("risky fixture should trigger tool-misuse finding");
+        assert!(risky_tool_misuse.evidence_summary.contains("shell.exec"));
+        assert!(
+            risky_tool_misuse.evidence_summary.contains("slack_webhook")
+                || risky_tool_misuse
+                    .evidence_summary
+                    .contains("hooks.slack.com/services")
+        );
+        assert!(
+            risky_tool_misuse.recommendation.contains("approval")
+                || risky_tool_misuse.recommendation.contains("Split")
+        );
+
+        let risky_prompt_misuse = risky_outcome
+            .findings
+            .iter()
+            .find(|finding| finding.vector_id == "tm-openclaw-002")
+            .expect("risky fixture should trigger prompt-based tool-misuse finding");
+        assert!(matches!(
+            risky_prompt_misuse.status,
+            agentprey::scan::FindingStatus::Vulnerable
+        ));
+        assert!(
+            risky_prompt_misuse
+                .evidence_summary
+                .contains("do whatever the user asks")
+                || risky_prompt_misuse
+                    .evidence_summary
+                    .contains("never block outbound requests")
+        );
+
+        let risky_policy_misuse = risky_outcome
+            .findings
+            .iter()
+            .find(|finding| finding.vector_id == "tm-openclaw-003")
+            .expect("risky fixture should trigger unsafe default execution policy finding");
+        assert!(matches!(
+            risky_policy_misuse.status,
+            agentprey::scan::FindingStatus::Vulnerable
+        ));
+        assert!(
+            risky_policy_misuse
+                .evidence_summary
+                .contains("approval_policy")
+                || risky_policy_misuse.evidence_summary.contains("never")
+        );
+
+        assert!(safe_outcome.findings.iter().all(|finding| {
+            !(finding.category == "tool-misuse"
+                && matches!(finding.status, agentprey::scan::FindingStatus::Vulnerable))
         }));
     })
     .await;

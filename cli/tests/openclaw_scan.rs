@@ -215,8 +215,48 @@ async fn openclaw_scan_flags_risky_fixture_and_reduces_findings_for_safe_fixture
                 || risky_policy_misuse.evidence_summary.contains("never")
         );
 
+        let risky_approval_bypass = risky_outcome
+            .findings
+            .iter()
+            .find(|finding| finding.vector_id == "ab-openclaw-001")
+            .expect("risky fixture should trigger approval-bypass finding");
+        assert!(matches!(
+            risky_approval_bypass.status,
+            agentprey::scan::FindingStatus::Vulnerable
+        ));
+        assert!(
+            risky_approval_bypass
+                .evidence_summary
+                .contains("approval_policy")
+                || risky_approval_bypass.evidence_summary.contains("never")
+        );
+        assert!(
+            risky_approval_bypass.recommendation.contains("approval")
+                || risky_approval_bypass
+                    .recommendation
+                    .contains("Require explicit")
+        );
+
+        let risky_prompt_approval_bypass = risky_outcome
+            .findings
+            .iter()
+            .find(|finding| finding.vector_id == "ab-openclaw-002")
+            .expect("risky fixture should trigger prompt-based approval bypass finding");
+        assert!(matches!(
+            risky_prompt_approval_bypass.status,
+            agentprey::scan::FindingStatus::Vulnerable
+        ));
+        assert!(
+            risky_prompt_approval_bypass
+                .evidence_summary
+                .contains("do whatever the user asks")
+                || risky_prompt_approval_bypass
+                    .evidence_summary
+                    .contains("never block outbound requests")
+        );
+
         assert!(safe_outcome.findings.iter().all(|finding| {
-            !(finding.category == "tool-misuse"
+            !((finding.category == "tool-misuse" || finding.category == "approval-bypass")
                 && matches!(finding.status, agentprey::scan::FindingStatus::Vulnerable))
         }));
     })

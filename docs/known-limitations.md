@@ -11,9 +11,9 @@ These limits reflect the shipped product after the current upload and share-link
 
 ## Scan coverage
 
-- HTTP scans and local-path OpenClaw scans are shipped. OpenClaw requires a checked-out local project path, not a URL.
+- HTTP scans, MCP descriptor scans, and local-path OpenClaw scans are shipped. OpenClaw requires a checked-out local project path, not a URL.
+- MCP support is currently descriptor-based. The scanner inventories tools and applies MCP-specific rules, but it does not execute live MCP sessions.
 - Detection still relies on heuristic indicators and scoring. False positives and false negatives are still possible on custom agent schemas.
-- The scanner does not ship an MCP adapter today.
 
 ## Reporting and telemetry
 

@@ -6,6 +6,7 @@ This repository contains the current AgentPrey CLI:
 
 - Rust CLI with `scan`, `init`, `auth`, and `vectors` commands
 - HTTP endpoint scans with YAML-defined prompt-injection vectors
+- MCP descriptor scans with `--type mcp`
 - Local-path OpenClaw scans with `--type openclaw`
 - Plain terminal and `--ui tui` scan output modes
 - Interactive control center with `agentprey center`
@@ -29,7 +30,7 @@ agentprey init
 Install a specific version:
 
 ```bash
-curl -fsSL https://agentprey.com/install | sh -s -- --version v0.1.6
+curl -fsSL https://agentprey.com/install | sh -s -- --version v0.2.0
 ```
 
 The installer places `agentprey` in `~/.local/bin` by default and currently supports Linux x86_64 plus Apple Silicon macOS. On other targets, use Cargo.
@@ -109,6 +110,20 @@ agentprey scan \
 ```
 
 OpenClaw scans use a local project path, not a URL.
+
+### MCP descriptor scan
+
+Point AgentPrey at an MCP descriptor JSON file:
+
+```bash
+agentprey scan \
+  --type mcp \
+  --target ./path/to/mcp-descriptor.json
+```
+
+MCP scans currently analyze descriptor metadata and inventory for MCP-specific
+security findings such as dangerous capabilities, approval gaps, trust-boundary
+exposure, and risky tool metadata.
 
 ### TUI mode
 

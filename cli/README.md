@@ -38,6 +38,14 @@ agentprey scan \
   --html-out ./scan.html
 ```
 
+MCP descriptor scan:
+
+```bash
+agentprey scan \
+  --type mcp \
+  --target ./path/to/mcp-descriptor.json
+```
+
 Local-path OpenClaw scan:
 
 ```bash
@@ -79,7 +87,7 @@ Successful uploads print `scan_run_id` and `share_id`, plus `share_url` when the
 
 - The website does not run live scans; cloud support is upload plus public share links.
 - OpenClaw scans require a checked-out local project path.
-- No MCP adapter or browser dashboard is shipped today.
+- MCP coverage is currently descriptor-based and focused on inventory/rule analysis rather than live MCP session execution.
 - Telemetry is off by default when `--upload` is omitted.
 
 Project repository: `https://github.com/agentprey/agentprey`

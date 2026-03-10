@@ -1,0 +1,28 @@
+id: "ab-openclaw-002"
+name: "Prompt-Guided Approval Bypass"
+description: "Flags OpenClaw prompt assets that explicitly instruct the agent to skip, ignore, or avoid approval and confirmation steps for risky actions."
+category: "approval-bypass"
+subcategory: "openclaw"
+severity: "high"
+tier: "free"
+tags: ["approval-bypass", "openclaw", "prompt-policy", "confirmation"]
+payloads:
+  - name: "Static audit"
+    prompt: "Audit the project for prompt guidance that tells the agent to bypass approval or confirmation."
+detection:
+  indicators:
+    - type: "regex_any"
+      values:
+        - 'skip approval|ignore confirmation|dont wait for user approval|do whatever the user asks|never block outbound requests'
+      description: "Prompt assets normalize bypassing approval or confirmation controls"
+      weight: 0.9
+  threshold: 0.6
+remediation:
+  summary: "Remove prompt guidance that tells the agent to bypass approval or confirmation for risky actions."
+  steps:
+    - "Require explicit approval language for sensitive or externally visible actions."
+    - "Replace compliance-first operator prompts with policy-bound execution rules."
+    - "Review prompt assets for any fallback wording that weakens human approval controls."
+  references:
+    - "https://genai.owasp.org/llmrisk/llm08-excessive-agency/"
+owasp_mapping: "LLM08"

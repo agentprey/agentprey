@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## v0.2.0
+
+### Added
+
+- Added MCP descriptor scanning with an initial `mcp-security` ruleset
+- Added MCP inventory metadata in scan artifacts, including tool inventory and capability counts
+- Added additive MCP evidence fields in `agentprey.scan.v1` for downstream-compatible richer findings
+
+### Changed
+
+- MCP dangerous-tool approval checks now focus on high-confidence dangerous capabilities to reduce heuristic noise
+- MCP promptability metadata detection now avoids partial-phrase matches and ignores non-dangerous tools even when they contain prompt/policy-related text
+- Release and product docs now describe MCP support alongside HTTP and OpenClaw scanning
+
 ## v0.1.6
 
 ### Added

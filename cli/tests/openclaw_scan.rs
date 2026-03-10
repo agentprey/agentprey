@@ -179,6 +179,24 @@ async fn openclaw_scan_flags_risky_fixture_and_reduces_findings_for_safe_fixture
                 || risky_tool_misuse.recommendation.contains("Split")
         );
 
+        let risky_prompt_misuse = risky_outcome
+            .findings
+            .iter()
+            .find(|finding| finding.vector_id == "tm-openclaw-002")
+            .expect("risky fixture should trigger prompt-based tool-misuse finding");
+        assert!(matches!(
+            risky_prompt_misuse.status,
+            agentprey::scan::FindingStatus::Vulnerable
+        ));
+        assert!(
+            risky_prompt_misuse
+                .evidence_summary
+                .contains("do whatever the user asks")
+                || risky_prompt_misuse
+                    .evidence_summary
+                    .contains("never block outbound requests")
+        );
+
         assert!(safe_outcome.findings.iter().all(|finding| {
             !(finding.category == "tool-misuse"
                 && matches!(finding.status, agentprey::scan::FindingStatus::Vulnerable))

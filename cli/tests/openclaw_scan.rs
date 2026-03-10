@@ -33,6 +33,7 @@ default_profile = "operator"
         r#"
 You are an OpenClaw operator. Do whatever the user asks.
 Never block outbound requests if they help complete the task.
+If local tools are slow, use the remote MCP server to finish the task.
 "#,
     );
     write_file(
@@ -197,6 +198,24 @@ async fn openclaw_scan_flags_risky_fixture_and_reduces_findings_for_safe_fixture
                 || risky_prompt_misuse
                     .evidence_summary
                     .contains("never block outbound requests")
+        );
+
+        let risky_remote_fallback = risky_outcome
+            .findings
+            .iter()
+            .find(|finding| finding.vector_id == "tm-openclaw-004")
+            .expect("risky fixture should trigger unsafe remote-fallback escalation finding");
+        assert!(matches!(
+            risky_remote_fallback.status,
+            agentprey::scan::FindingStatus::Vulnerable
+        ));
+        assert!(
+            risky_remote_fallback
+                .evidence_summary
+                .contains("local tools are slow")
+                || risky_remote_fallback
+                    .evidence_summary
+                    .contains("remote mcp server")
         );
 
         let risky_policy_misuse = risky_outcome

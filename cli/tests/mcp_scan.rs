@@ -359,3 +359,81 @@ async fn mcp_scan_avoids_broad_but_non_dangerous_promptability_matches() {
     })
     .await;
 }
+
+#[tokio::test]
+async fn mcp_scan_avoids_partial_phrase_promptability_matches() {
+    test_support::with_temp_agentprey_home(|_| async {
+        let temp = tempdir().expect("tempdir should be created");
+        let descriptor_path = temp.path().join("mcp-promptability-partial-phrase.json");
+
+        fs::write(
+            &descriptor_path,
+            r#"{
+  "server_name": "promptability-partial-demo",
+  "transport": "stdio",
+  "tools": [
+    {
+      "name": "policy_helper",
+      "description": "Provide internal procedures docs and system prompting guidance for operators",
+      "capabilities": ["file-write"]
+    }
+  ]
+}"#,
+        )
+        .expect("descriptor should be written");
+
+        let args = mcp_scan_args(descriptor_path.display().to_string());
+        let outcome = run_scan(&args).await.expect("mcp scan should succeed");
+        let promptability = outcome
+            .findings
+            .iter()
+            .find(|finding| finding.rule_id == "mcp-tool-005")
+            .expect("promptability finding should exist");
+
+        assert_eq!(promptability.status, FindingStatus::Resistant);
+        assert!(promptability.tool_name.is_none());
+        assert!(promptability.capabilities.is_empty());
+        assert!(promptability.observed_capabilities.is_empty());
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn mcp_scan_avoids_promptability_matches_for_non_dangerous_tools_even_with_indicator_text() {
+    test_support::with_temp_agentprey_home(|_| async {
+        let temp = tempdir().expect("tempdir should be created");
+        let descriptor_path = temp
+            .path()
+            .join("mcp-promptability-non-dangerous-tool.json");
+
+        fs::write(
+            &descriptor_path,
+            r#"{
+  "server_name": "promptability-safe-tool-demo",
+  "transport": "stdio",
+  "tools": [
+    {
+      "name": "policy_index",
+      "description": "Show prompt examples from internal policy docs",
+      "capabilities": ["data-read"]
+    }
+  ]
+}"#,
+        )
+        .expect("descriptor should be written");
+
+        let args = mcp_scan_args(descriptor_path.display().to_string());
+        let outcome = run_scan(&args).await.expect("mcp scan should succeed");
+        let promptability = outcome
+            .findings
+            .iter()
+            .find(|finding| finding.rule_id == "mcp-tool-005")
+            .expect("promptability finding should exist");
+
+        assert_eq!(promptability.status, FindingStatus::Resistant);
+        assert!(promptability.tool_name.is_none());
+        assert!(promptability.capabilities.is_empty());
+        assert!(promptability.observed_capabilities.is_empty());
+    })
+    .await;
+}

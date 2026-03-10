@@ -235,32 +235,42 @@ fn normalize_metadata_text(value: &str) -> String {
         .join(" ")
 }
 
-fn tool_capability_names(tool: &McpTool) -> Vec<String> {
-    dedupe_strings(
-        &tool
-            .capabilities
-            .iter()
-            .map(|assessment| assessment.capability.as_str().to_string())
-            .collect::<Vec<_>>(),
-    )
-}
-
 fn promptability_matches(tool: &McpTool) -> Vec<String> {
-    let name = normalize_metadata_text(&tool.name);
-    let description = tool
-        .description
-        .as_deref()
-        .map(normalize_metadata_text)
-        .unwrap_or_default();
+    let name = format!(" {} ", normalize_metadata_text(&tool.name));
+    let description = format!(
+        " {} ",
+        tool.description
+            .as_deref()
+            .map(normalize_metadata_text)
+            .unwrap_or_default()
+    );
     let mut matches = Vec::new();
 
     for indicator in DANGEROUS_PROMPTABILITY_INDICATORS {
-        if name.contains(indicator) || description.contains(indicator) {
+        let padded_indicator = format!(" {indicator} ");
+        if name.contains(&padded_indicator) || description.contains(&padded_indicator) {
             matches.push(indicator.to_string());
         }
     }
 
     dedupe_strings(&matches)
+}
+
+fn promptability_capabilities(tool: &McpTool) -> Vec<String> {
+    tool.capabilities
+        .iter()
+        .filter(|assessment| {
+            assessment.confidence == CapabilityConfidence::High
+                && matches!(
+                    assessment.capability,
+                    McpCapability::CommandExec
+                        | McpCapability::SecretsRead
+                        | McpCapability::BrowserControl
+                        | McpCapability::FileWrite
+                )
+        })
+        .map(|assessment| assessment.capability.as_str().to_string())
+        .collect()
 }
 
 fn evaluate_dangerous_capability_exposure(metadata: &McpScanMetadata) -> McpRuleEvaluation {
@@ -391,10 +401,15 @@ fn evaluate_dangerous_tool_description_promptability(
             continue;
         }
 
+        let capabilities = promptability_capabilities(tool);
+        if capabilities.is_empty() {
+            continue;
+        }
+
         matching.push((
             tool.name.clone(),
             indicators,
-            tool_capability_names(tool),
+            capabilities,
             tool.approval_required,
         ));
     }

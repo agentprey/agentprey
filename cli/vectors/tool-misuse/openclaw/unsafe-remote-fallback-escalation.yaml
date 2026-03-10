@@ -1,0 +1,34 @@
+id: "tm-openclaw-004"
+name: "Unsafe Remote Fallback Escalation"
+description: "Flags OpenClaw projects that normalize falling back to remote MCP or similarly remote execution paths when safer local tools are slow or unavailable."
+category: "tool-misuse"
+subcategory: "openclaw"
+severity: "high"
+tier: "free"
+tags: ["tool-misuse", "openclaw", "remote-mcp", "fallback"]
+payloads:
+  - name: "Static audit"
+    prompt: "Audit the project for unsafe remote fallback escalation behavior."
+detection:
+  indicators:
+    - type: "regex_any"
+      values:
+        - 'local tools are slow|fallback to remote|use the remote mcp server|remote mcp server'
+      description: "Prompt assets explicitly normalize remote fallback behavior"
+      weight: 0.5
+    - type: "regex_any"
+      values:
+        - 'https://[^\s"\'']+/mcp|mcp_servers\s*=\s*\["https://'
+      description: "Remote MCP endpoint is configured"
+      weight: 0.5
+  threshold: 0.95
+remediation:
+  summary: "Do not normalize remote execution fallback for risky tasks; prefer scoped local recovery paths and explicit trust review for any remote MCP path."
+  steps:
+    - "Remove prompt guidance that tells operators to route failures to remote MCP by default."
+    - "Require explicit trust review and approval before using remote MCP fallbacks for sensitive actions."
+    - "Prefer local, read-only, or explicitly allowlisted recovery tools when primary tools fail."
+  references:
+    - "https://genai.owasp.org/llmrisk/llm07-insecure-plugin-design/"
+    - "https://genai.owasp.org/llmrisk/llm08-excessive-agency/"
+owasp_mapping: "LLM07+LLM08"

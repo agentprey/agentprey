@@ -37,6 +37,7 @@ const DEFAULT_MAX_CONCURRENT: usize = 2;
 const DEFAULT_RATE_LIMIT_RPS: u32 = 10;
 const DEFAULT_REDACT_RESPONSES: bool = true;
 pub const OPENCLAW_VECTOR_CATEGORY: &str = "openclaw";
+pub const TOOL_MISUSE_VECTOR_CATEGORY: &str = "tool-misuse";
 pub const MCP_VECTOR_CATEGORY: &str = mcp::MCP_VECTOR_CATEGORY;
 
 #[derive(Debug, Clone, Serialize)]
@@ -527,19 +528,24 @@ fn validate_category_for_target(target_type: TargetType, category: Option<&str>)
         return Ok(());
     };
 
-    if target_type == TargetType::Http && category.eq_ignore_ascii_case(OPENCLAW_VECTOR_CATEGORY) {
+    if target_type == TargetType::Http
+        && (category.eq_ignore_ascii_case(OPENCLAW_VECTOR_CATEGORY)
+            || category.eq_ignore_ascii_case(TOOL_MISUSE_VECTOR_CATEGORY))
+    {
         return Err(anyhow!(
             "category '{}' requires `agentprey scan --type openclaw`",
-            OPENCLAW_VECTOR_CATEGORY
+            category
         ));
     }
 
     if target_type == TargetType::Openclaw
         && !category.eq_ignore_ascii_case(OPENCLAW_VECTOR_CATEGORY)
+        && !category.eq_ignore_ascii_case(TOOL_MISUSE_VECTOR_CATEGORY)
     {
         return Err(anyhow!(
-            "openclaw scans currently support category '{}' or no category filter",
-            OPENCLAW_VECTOR_CATEGORY
+            "openclaw scans currently support category '{}' or '{}' or no category filter",
+            OPENCLAW_VECTOR_CATEGORY,
+            TOOL_MISUSE_VECTOR_CATEGORY
         ));
     }
 
@@ -609,10 +615,11 @@ fn filter_vectors_for_settings(vectors: &mut Vec<LoadedVector>, settings: &Resol
 
 fn vector_is_compatible_with_target(category: &str, target_type: TargetType) -> bool {
     let is_openclaw = category.eq_ignore_ascii_case(OPENCLAW_VECTOR_CATEGORY);
+    let is_tool_misuse = category.eq_ignore_ascii_case(TOOL_MISUSE_VECTOR_CATEGORY);
     let is_mcp = category.eq_ignore_ascii_case(MCP_VECTOR_CATEGORY);
     match target_type {
-        TargetType::Http => !is_openclaw && !is_mcp,
-        TargetType::Openclaw => is_openclaw,
+        TargetType::Http => !is_openclaw && !is_tool_misuse && !is_mcp,
+        TargetType::Openclaw => is_openclaw || is_tool_misuse,
         TargetType::Mcp => is_mcp,
     }
 }
@@ -1214,7 +1221,7 @@ endpoint = "./fixture"
     }
 
     #[test]
-    fn rejects_non_openclaw_category_for_openclaw_scans() {
+    fn rejects_unsupported_category_for_openclaw_scans() {
         let temp = tempdir().expect("tempdir should be created");
         let args = ScanArgs {
             target: Some(temp.path().display().to_string()),
@@ -1241,6 +1248,65 @@ endpoint = "./fixture"
         assert!(error
             .to_string()
             .contains("openclaw scans currently support category"));
+    }
+
+    #[test]
+    fn allows_tool_misuse_category_for_openclaw_scans() {
+        let temp = tempdir().expect("tempdir should be created");
+        let args = ScanArgs {
+            target: Some(temp.path().display().to_string()),
+            target_type: TargetType::Openclaw,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: None,
+            retries: None,
+            retry_backoff_ms: None,
+            max_concurrent: None,
+            rate_limit_rps: None,
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: Some(temp.path().join("vectors")),
+            category: Some("tool-misuse".to_string()),
+            json_out: None,
+            html_out: None,
+            upload: false,
+            config: None,
+            ui: ScanUi::Plain,
+        };
+
+        let resolved = resolve_scan_settings(&args).expect("tool-misuse should be allowed");
+        assert_eq!(resolved.category.as_deref(), Some("tool-misuse"));
+    }
+
+    #[test]
+    fn rejects_tool_misuse_category_for_http_scans() {
+        let temp = tempdir().expect("tempdir should be created");
+        let args = ScanArgs {
+            target: Some("http://127.0.0.1:8787/chat".to_string()),
+            target_type: TargetType::Http,
+            headers: vec![],
+            request_template: None,
+            timeout_seconds: None,
+            retries: None,
+            retry_backoff_ms: None,
+            max_concurrent: None,
+            rate_limit_rps: None,
+            redact_responses: false,
+            no_redact_responses: false,
+            vectors_dir: Some(temp.path().join("vectors")),
+            category: Some("tool-misuse".to_string()),
+            json_out: None,
+            html_out: None,
+            upload: false,
+            config: None,
+            ui: ScanUi::Plain,
+        };
+
+        let error =
+            resolve_scan_settings(&args).expect_err("http tool-misuse category should fail");
+        assert!(error
+            .to_string()
+            .contains("category 'tool-misuse' requires `agentprey scan --type openclaw`"));
     }
 
     #[test]
@@ -1311,7 +1377,8 @@ endpoint = "./fixture"
     }
 
     #[test]
-    fn filters_vectors_to_openclaw_category_for_openclaw_target_without_explicit_category() {
+    fn filters_vectors_to_openclaw_and_tool_misuse_categories_for_openclaw_target_without_explicit_category(
+    ) {
         let temp = tempdir().expect("tempdir should be created");
         let root = temp.path().join("vectors");
         write_vector(
@@ -1325,6 +1392,12 @@ endpoint = "./fixture"
             "openclaw/permissions/oc-001.yaml",
             "oc-001",
             OPENCLAW_VECTOR_CATEGORY,
+        );
+        write_vector(
+            &root,
+            "tool-misuse/openclaw/tm-001.yaml",
+            "tm-001",
+            "tool-misuse",
         );
 
         let mut loaded = load_vectors_for_scan(&root, None).expect("vectors should load");
@@ -1345,8 +1418,18 @@ endpoint = "./fixture"
         };
 
         filter_vectors_for_settings(&mut loaded, &settings);
-        assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].vector.category, OPENCLAW_VECTOR_CATEGORY);
+        let mut categories = loaded
+            .iter()
+            .map(|loaded| loaded.vector.category.clone())
+            .collect::<Vec<_>>();
+        categories.sort();
+        assert_eq!(
+            categories,
+            vec![
+                OPENCLAW_VECTOR_CATEGORY.to_string(),
+                "tool-misuse".to_string()
+            ]
+        );
     }
 
     #[test]

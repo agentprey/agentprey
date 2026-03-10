@@ -158,6 +158,31 @@ async fn openclaw_scan_flags_risky_fixture_and_reduces_findings_for_safe_fixture
                 || finding.response.contains("shell.exec")
                 || finding.response.contains("https://untrusted.example/mcp")
         }));
+
+        let risky_tool_misuse = risky_outcome
+            .findings
+            .iter()
+            .find(|finding| {
+                finding.category == "tool-misuse"
+                    && matches!(finding.status, agentprey::scan::FindingStatus::Vulnerable)
+            })
+            .expect("risky fixture should trigger tool-misuse finding");
+        assert!(risky_tool_misuse.evidence_summary.contains("shell.exec"));
+        assert!(
+            risky_tool_misuse.evidence_summary.contains("slack_webhook")
+                || risky_tool_misuse
+                    .evidence_summary
+                    .contains("hooks.slack.com/services")
+        );
+        assert!(
+            risky_tool_misuse.recommendation.contains("approval")
+                || risky_tool_misuse.recommendation.contains("Split")
+        );
+
+        assert!(safe_outcome.findings.iter().all(|finding| {
+            !(finding.category == "tool-misuse"
+                && matches!(finding.status, agentprey::scan::FindingStatus::Vulnerable))
+        }));
     })
     .await;
 }

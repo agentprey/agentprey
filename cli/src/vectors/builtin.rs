@@ -96,5 +96,8 @@ mod tests {
         assert!(loaded
             .iter()
             .any(|vector| vector.vector.id == "ab-openclaw-002"));
+        assert!(loaded
+            .iter()
+            .any(|vector| vector.vector.id == "ab-openclaw-003"));
     }
 }

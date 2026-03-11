@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## v0.4.0
+
+### Added
+
+- Added OpenClaw-focused `tool-misuse` findings for dangerous tool + egress combinations, unsafe fallback guidance, and unsafe default execution policy
+- Added `approval-bypass` findings for approval-disabled risky defaults, prompt-guided approval bypass, and fallback path approval avoidance
+- Added unsafe remote-fallback escalation coverage to expand release-gating evidence for tool-using agents
+- Added stronger HTML report surfacing for higher-risk findings and clearer remediation scanning
+
+### Changed
+
+- OpenClaw scans now provide a more credible post-MCP release-gating story for tool-using agents
+- Public docs and release-facing surfaces now better reflect the shipped `tool-misuse` and `approval-bypass` foundations
+- The current released value now maps to the intended `0.4.0` approval-bypass milestone rather than the older `0.2.0` MCP-only public state
+
 ## v0.2.0
 
 ### Added

@@ -12,9 +12,14 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 use agentprey::{
     auth::{self, CacheStaleness},
-    cli::{AuthCommands, CenterArgs, Cli, Commands, ScanUi, VectorsCommands, VectorsListArgs},
+    cli::{
+        AuthCommands, CenterArgs, Cli, Commands, CompareArgs, ScanUi, VectorsCommands,
+        VectorsListArgs,
+    },
     cloud::upload_scan_run,
+    compare::{compare_artifact_files, ArtifactComparison, ArtifactGrade},
     config::write_default_config,
+    output::compare_json::write_compare_json,
     output::html::write_scan_html,
     output::json::write_scan_json,
     scan::{
@@ -137,6 +142,7 @@ async fn main() -> ExitCode {
             }
         }
         Commands::Center(args) => run_center(args.as_ref()).await,
+        Commands::Compare(args) => run_compare(&args),
         Commands::Vectors(args) => match args.command {
             VectorsCommands::List(list_args) => match render_vectors_list(&list_args) {
                 Ok(()) => ExitCode::from(0),
@@ -168,6 +174,36 @@ async fn main() -> ExitCode {
             }
         },
     }
+}
+
+fn run_compare(args: &CompareArgs) -> ExitCode {
+    let comparison = match compare_artifact_files(&args.baseline, &args.candidate) {
+        Ok(comparison) => comparison,
+        Err(error) => {
+            eprintln!("{} {error}", "error:".red().bold());
+            return ExitCode::from(1);
+        }
+    };
+
+    render_compare_report_card(&comparison);
+
+    if let Some(path) = args.json_out.as_deref() {
+        if let Err(error) = write_compare_json(path, &comparison) {
+            eprintln!("{} {error}", "error:".red().bold());
+            return ExitCode::from(1);
+        }
+
+        println!("JSON Output: {}", path.display());
+    }
+
+    if let Some(path) = args.html_out.as_deref() {
+        eprintln!(
+            "warning: compare HTML output is not implemented yet; ignoring requested path '{}'",
+            path.display()
+        );
+    }
+
+    ExitCode::from(0)
 }
 
 async fn run_plain_scan(settings: &ResolvedScanSettings, upload: bool) -> ExitCode {
@@ -335,6 +371,79 @@ fn render_vectors_list(args: &VectorsListArgs) -> anyhow::Result<()> {
 
     println!();
     Ok(())
+}
+
+fn render_compare_report_card(comparison: &ArtifactComparison) {
+    println!();
+    println!(
+        "{}",
+        style("=== AgentPrey Compare Report ===")
+            .bold()
+            .underlined()
+    );
+    println!(
+        "Baseline: {} | {} | grade {} | score {} | findings {} | vulnerable {} | resistant {} | errors {}",
+        comparison.baseline.path.display(),
+        comparison.baseline.target,
+        style_compare_grade(comparison.baseline.score.grade),
+        style(comparison.baseline.score.score).bold(),
+        comparison.baseline.counts.findings,
+        style_count(comparison.baseline.counts.vulnerable, FindingStatus::Vulnerable),
+        style_count(comparison.baseline.counts.resistant, FindingStatus::Resistant),
+        style_count(comparison.baseline.counts.errors, FindingStatus::Error),
+    );
+    println!(
+        "Candidate: {} | {} | grade {} | score {} | findings {} | vulnerable {} | resistant {} | errors {}",
+        comparison.candidate.path.display(),
+        comparison.candidate.target,
+        style_compare_grade(comparison.candidate.score.grade),
+        style(comparison.candidate.score.score).bold(),
+        comparison.candidate.counts.findings,
+        style_count(comparison.candidate.counts.vulnerable, FindingStatus::Vulnerable),
+        style_count(comparison.candidate.counts.resistant, FindingStatus::Resistant),
+        style_count(comparison.candidate.counts.errors, FindingStatus::Error),
+    );
+    println!(
+        "Delta: findings {:+} | vulnerable {:+} | resistant {:+} | errors {:+} | score {:+}",
+        comparison.overall_delta.findings_delta,
+        comparison.overall_delta.vulnerable_delta,
+        comparison.overall_delta.resistant_delta,
+        comparison.overall_delta.error_delta,
+        comparison.overall_delta.score_delta,
+    );
+    println!(
+        "Finding changes: added {} | removed {} | changed {}",
+        comparison.added_findings.len(),
+        comparison.removed_findings.len(),
+        comparison.changed_findings.len(),
+    );
+
+    let changed_categories = comparison
+        .category_deltas
+        .iter()
+        .filter(|category| {
+            category.delta.total != 0
+                || category.delta.vulnerable != 0
+                || category.delta.resistant != 0
+                || category.delta.errors != 0
+        })
+        .collect::<Vec<_>>();
+
+    if !changed_categories.is_empty() {
+        println!("Category deltas:");
+        for category in changed_categories {
+            println!(
+                "- {:<20} total {:+} | vuln {:+} | resistant {:+} | errors {:+}",
+                category.category,
+                category.delta.total,
+                category.delta.vulnerable,
+                category.delta.resistant,
+                category.delta.errors,
+            );
+        }
+    }
+
+    println!();
 }
 
 fn scan_exit_code(outcome: &ScanOutcome) -> ExitCode {
@@ -521,6 +630,15 @@ fn style_grade(grade: Grade) -> String {
         Grade::A | Grade::B => style(text).green().bold().to_string(),
         Grade::C => style(text).yellow().bold().to_string(),
         Grade::D | Grade::F => style(text).red().bold().to_string(),
+    }
+}
+
+fn style_compare_grade(grade: ArtifactGrade) -> String {
+    let text = format!("{grade:?}");
+    match grade {
+        ArtifactGrade::A | ArtifactGrade::B => style(text).green().bold().to_string(),
+        ArtifactGrade::C => style(text).yellow().bold().to_string(),
+        ArtifactGrade::D | ArtifactGrade::F => style(text).red().bold().to_string(),
     }
 }
 

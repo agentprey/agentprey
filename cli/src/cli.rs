@@ -10,6 +10,7 @@ use std::path::PathBuf;
     after_help = r#"Examples:
   agentprey scan --target https://my-agent.com/api
   agentprey scan --target https://my-agent.com/api --category prompt-injection
+  agentprey compare --baseline ./baseline.json --candidate ./candidate.json --json-out ./compare.json
   agentprey center --target https://my-agent.com/api
   agentprey scan --type openclaw --target ./some-openclaw-project
   agentprey scan --target https://my-agent.com/api --request-template '{"input": "{{payload}}"}'
@@ -34,6 +35,9 @@ pub enum Commands {
 
     /// Open the interactive control center for configuring and running scans
     Center(Box<CenterArgs>),
+
+    /// Compare two scan artifacts and summarize score and finding deltas
+    Compare(CompareArgs),
 
     /// List, inspect, and sync attack vectors. Use 'vectors list' to see available vectors, 'vectors sync --pro' to download Pro vectors
     Vectors(VectorsArgs),
@@ -178,6 +182,25 @@ pub struct CenterArgs {
     /// Optional path to project config TOML
     #[arg(long)]
     pub config: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct CompareArgs {
+    /// Baseline scan artifact JSON path
+    #[arg(long)]
+    pub baseline: PathBuf,
+
+    /// Candidate scan artifact JSON path
+    #[arg(long)]
+    pub candidate: PathBuf,
+
+    /// Optional path for writing compare JSON output
+    #[arg(long)]
+    pub json_out: Option<PathBuf>,
+
+    /// Optional path for writing compare HTML output
+    #[arg(long)]
+    pub html_out: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Args)]

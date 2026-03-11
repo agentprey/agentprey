@@ -2,6 +2,7 @@ pub mod analyzer;
 pub mod auth;
 pub mod cli;
 pub mod cloud;
+pub mod compare;
 pub mod config;
 pub mod http_target;
 pub mod mcp;

@@ -1,0 +1,25 @@
+{
+  "schema_version": "agentprey.scan.v2",
+  "generated_at_ms": 1700000002000,
+  "scan": {
+    "target_type": "http",
+    "target": "https://unknown.example/api",
+    "total_vectors": 0,
+    "vulnerable_count": 0,
+    "resistant_count": 0,
+    "error_count": 0,
+    "score": {
+      "score": 100,
+      "grade": "A",
+      "vulnerable_severities": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "info": 0
+      },
+      "error_count": 0
+    },
+    "findings": []
+  }
+}

@@ -19,9 +19,9 @@ use agentprey::{
     cloud::upload_scan_run,
     compare::{compare_artifact_files, ArtifactComparison, ArtifactGrade},
     config::write_default_config,
-    output::compare_json::write_compare_json,
     output::html::write_scan_html,
     output::json::write_scan_json,
+    output::{compare_html::write_compare_html, compare_json::write_compare_json},
     scan::{
         count_vectors_for_settings, resolve_scan_settings, run_scan_with_settings_with_reporter,
         FindingOutcome, FindingStatus, ResolvedScanSettings, ScanOutcome, ScanSettingsInput,
@@ -197,10 +197,12 @@ fn run_compare(args: &CompareArgs) -> ExitCode {
     }
 
     if let Some(path) = args.html_out.as_deref() {
-        eprintln!(
-            "warning: compare HTML output is not implemented yet; ignoring requested path '{}'",
-            path.display()
-        );
+        if let Err(error) = write_compare_html(path, &comparison) {
+            eprintln!("{} {error}", "error:".red().bold());
+            return ExitCode::from(1);
+        }
+
+        println!("HTML Output: {}", path.display());
     }
 
     ExitCode::from(0)

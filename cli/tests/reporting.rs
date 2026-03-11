@@ -239,8 +239,12 @@ fn html_report_renders_mcp_inventory_with_additive_finding_fields() {
     write_scan_html(&html_path, &outcome).expect("html output should be written");
 
     let html = fs::read_to_string(&html_path).expect("html output should exist");
+    assert!(html.contains("Category Overview"));
+    assert!(html.contains("Priority Findings"));
+    assert!(html.contains("MCP Security Findings"));
     assert!(html.contains("MCP Inventory"));
     assert!(html.contains("run_shell"));
     assert!(html.contains("command-exec"));
     assert!(html.contains("Dangerous Capability Exposure"));
+    assert!(html.contains("Recommended action"));
 }

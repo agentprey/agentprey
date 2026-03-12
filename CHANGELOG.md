@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## v0.5.0
+
+### Added
+
+- Added scan artifact comparison foundations with stable comparison models, `agentprey compare`, JSON output, and HTML compare reports
+- Added a redesigned operator-console TUI with stronger control-center framing, clearer completion states, and focused regression coverage for finalization artifact reporting
+
+### Changed
+
+- TUI completion metadata now only marks JSON and HTML artifacts as written after successful finalization writes
+- README install guidance now points to the `v0.5.0` release line
+
 ## v0.4.0
 
 ### Added

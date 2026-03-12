@@ -41,6 +41,7 @@ const BORDER_COLOR: Color = Color::DarkGray;
 const MUTED_COLOR: Color = Color::Gray;
 const TEXT_COLOR: Color = Color::White;
 const ACCENT_COLOR: Color = Color::Red;
+const SUCCESS_COLOR: Color = Color::Green;
 const WARNING_COLOR: Color = Color::Yellow;
 const INFO_COLOR: Color = Color::Cyan;
 
@@ -394,6 +395,22 @@ impl CenterField {
             Self::TargetType | Self::Upload | Self::RedactResponses
         )
     }
+
+    fn section(self) -> &'static str {
+        match self {
+            Self::TargetType | Self::Target | Self::Category | Self::VectorsDir => "TARGETING",
+            Self::JsonOut | Self::HtmlOut | Self::Upload => "ARTIFACTS",
+            Self::TimeoutSeconds
+            | Self::Retries
+            | Self::RetryBackoffMs
+            | Self::MaxConcurrent
+            | Self::RateLimitRps
+            | Self::RedactResponses => "EXECUTION",
+            Self::Method | Self::Headers | Self::RequestTemplate | Self::ResponsePath => {
+                "HTTP PROFILE"
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -639,6 +656,23 @@ struct CenterCompletedState {
     share_url: Option<String>,
     finalization_error: Option<String>,
     exit_code: u8,
+}
+
+impl CenterCompletedState {
+    fn banner(&self) -> CompletionBanner {
+        if let Some(error) = self.finalization_error.as_ref() {
+            return CompletionBanner {
+                title: "FINALIZATION WARNING",
+                detail: compact_excerpt(error, 120),
+                guidance:
+                    "Local scan results are shown below, but at least one output step failed."
+                        .to_string(),
+                tone: PanelTone::Warning,
+            };
+        }
+
+        self.dashboard.completion_banner()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -929,21 +963,26 @@ fn render_center_configure(frame: &mut Frame, state: &CenterTuiState) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(4),
             Constraint::Min(0),
-            Constraint::Length(3),
+            Constraint::Length(4),
         ])
         .split(area);
     render_center_header(frame, state, sections[0], "CONTROL CENTER");
 
     let body = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(sections[1]);
 
     render_center_form(frame, state, body[0]);
     render_center_help(frame, state, body[1]);
-    render_center_footer(frame, state, sections[2], "[esc] quit  [ctrl+r] run");
+    render_center_footer(
+        frame,
+        state,
+        sections[2],
+        "[esc] quit  [tab/arrows] move  [enter] edit/toggle  [ctrl+r] run",
+    );
 }
 
 fn render_center_completed(frame: &mut Frame, state: &CenterTuiState) {
@@ -961,32 +1000,34 @@ fn render_center_completed(frame: &mut Frame, state: &CenterTuiState) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(4),
+            Constraint::Length(7),
             Constraint::Min(0),
-            Constraint::Length(3),
+            Constraint::Length(4),
         ])
         .split(area);
 
-    let status = if completed.finalization_error.is_some() {
-        "COMPLETE WITH ERROR"
-    } else {
-        "CONTROL CENTER"
-    };
-    render_center_header(frame, state, sections[0], status);
+    render_center_header(frame, state, sections[0], "CONTROL CENTER");
+    render_completion_banner_panel(frame, &completed.banner(), sections[1], completed.exit_code);
 
     let body = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(12), Constraint::Min(8)])
-        .split(sections[1]);
-    let top = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(36), Constraint::Percentage(64)])
+        .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
+        .split(sections[2]);
+    let left = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(12), Constraint::Min(10)])
         .split(body[0]);
+    let right = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(10), Constraint::Length(12)])
+        .split(body[1]);
 
-    render_dashboard_summary(frame, &completed.dashboard, top[0]);
-    render_completion_metadata(frame, completed, top[1]);
-    render_featured_panel(frame, &completed.dashboard, body[1], true);
-    render_center_footer(frame, state, sections[2], "[r] reconfigure  [q] quit");
+    render_dashboard_summary(frame, &completed.dashboard, left[0]);
+    render_completion_metadata(frame, completed, left[1]);
+    render_execution_log(frame, &completed.dashboard, right[0]);
+    render_featured_panel(frame, &completed.dashboard, right[1], true);
+    render_center_footer(frame, state, sections[3], "[r] reconfigure  [q] quit");
 }
 
 fn render_center_header(frame: &mut Frame, state: &CenterTuiState, area: Rect, status: &str) {
@@ -995,41 +1036,57 @@ fn render_center_header(frame: &mut Frame, state: &CenterTuiState, area: Rect, s
         &blank_or_value(&state.form.target, "<unset>"),
         area.width.saturating_sub(38) as usize,
     );
+    let tone = match state.view {
+        CenterView::Configure => PanelTone::Info,
+        CenterView::Running => PanelTone::Critical,
+        CenterView::Completed => state
+            .completed
+            .as_ref()
+            .map(|completed| completed.banner().tone)
+            .unwrap_or(PanelTone::Neutral),
+    };
     let lines = vec![
         Line::from(vec![
-            Span::styled(
-                format!("AGENTPREY V{}", env!("CARGO_PKG_VERSION")),
-                headline_style(),
-            ),
-            Span::raw("    "),
             Span::styled("TARGET: ", label_style()),
             Span::styled(target_preview, Style::default().fg(INFO_COLOR)),
-        ]),
-        Line::from(vec![
+            Span::raw("    "),
             Span::styled("MODE: ", label_style()),
             Span::styled(target_type_label(state.form.target_type), body_style()),
-            Span::raw("    "),
+        ]),
+        Line::from(vec![
             Span::styled("SOURCE: ", label_style()),
             Span::styled(source, muted_style()),
             Span::raw("    "),
             Span::styled("STATUS: ", label_style()),
-            Span::styled(
-                status,
-                Style::default().fg(TEXT_COLOR).add_modifier(Modifier::BOLD),
-            ),
+            Span::styled(status, emphasis_style(tone)),
+            Span::raw("    "),
+            Span::styled("UPLOAD: ", label_style()),
+            Span::styled(bool_label(state.form.upload).to_uppercase(), body_style()),
         ]),
     ];
 
-    frame.render_widget(Paragraph::new(lines).block(panel_block(Borders::ALL)), area);
+    frame.render_widget(
+        Paragraph::new(lines).block(titled_panel("OPERATOR CONSOLE", tone)),
+        area,
+    );
 }
 
 fn render_center_form(frame: &mut Frame, state: &CenterTuiState, area: Rect) {
-    let mut lines = vec![
-        Line::from(Span::styled("RUN CONFIGURATION", headline_style())),
-        Line::default(),
-    ];
+    let mut lines = Vec::new();
+    let mut current_section = "";
 
     for (index, field) in state.form.visible_fields().into_iter().enumerate() {
+        if field.section() != current_section {
+            if !lines.is_empty() {
+                lines.push(Line::default());
+            }
+            current_section = field.section();
+            lines.push(Line::from(Span::styled(
+                current_section,
+                emphasis_style(PanelTone::Info),
+            )));
+        }
+
         let selected = index == state.selected_field;
         let value = if selected && state.editing {
             format!("{}█", state.edit_buffer)
@@ -1045,13 +1102,13 @@ fn render_center_form(frame: &mut Frame, state: &CenterTuiState, area: Rect) {
             muted_style()
         };
         let value_style = if selected {
-            body_style().add_modifier(Modifier::BOLD)
+            emphasis_style(PanelTone::Info)
         } else {
             body_style()
         };
 
         lines.push(Line::from(vec![
-            Span::styled(if selected { "> " } else { "  " }, prefix_style),
+            Span::styled(if selected { "▶ " } else { "  " }, prefix_style),
             Span::styled(
                 format!("{:<13}", field.label().to_uppercase()),
                 label_style(),
@@ -1065,7 +1122,7 @@ fn render_center_form(frame: &mut Frame, state: &CenterTuiState, area: Rect) {
 
     frame.render_widget(
         Paragraph::new(lines)
-            .block(panel_block(Borders::ALL))
+            .block(titled_panel("RUN CONFIGURATION", PanelTone::Neutral))
             .wrap(Wrap { trim: true }),
         area,
     );
@@ -1073,18 +1130,19 @@ fn render_center_form(frame: &mut Frame, state: &CenterTuiState, area: Rect) {
 
 fn render_center_help(frame: &mut Frame, state: &CenterTuiState, area: Rect) {
     let field = state.selected_field();
-    let status_copy = if state.editing {
-        "EDITING"
+    let mode_copy = if state.editing {
+        "EDIT BUFFER ACTIVE"
     } else {
-        "NAVIGATION"
+        "NAVIGATION READY"
     };
 
     let mut lines = vec![
-        Line::from(Span::styled("FIELD HELP", headline_style())),
-        Line::default(),
         Line::from(vec![
             Span::styled("FIELD: ", label_style()),
-            Span::styled(field.label().to_uppercase(), body_style()),
+            Span::styled(
+                field.label().to_uppercase(),
+                emphasis_style(PanelTone::Info),
+            ),
         ]),
         Line::from(Span::styled(
             field.help(state.form.target_type),
@@ -1092,9 +1150,27 @@ fn render_center_help(frame: &mut Frame, state: &CenterTuiState, area: Rect) {
         )),
         Line::default(),
         Line::from(vec![
-            Span::styled("STATE: ", label_style()),
-            Span::styled(status_copy, body_style()),
+            Span::styled("CONSOLE: ", label_style()),
+            Span::styled(mode_copy, body_style()),
         ]),
+        Line::from(Span::styled(
+            format!(
+                "PROFILE  {}  |  REDACTION  {}",
+                target_type_label(state.form.target_type),
+                bool_label(state.form.redact_responses).to_uppercase()
+            ),
+            muted_style(),
+        )),
+        Line::from(Span::styled(
+            format!(
+                "ARTIFACTS  JSON:{}  HTML:{}  UPLOAD:{}",
+                bool_label(!state.form.json_out.trim().is_empty()).to_uppercase(),
+                bool_label(!state.form.html_out.trim().is_empty()).to_uppercase(),
+                bool_label(state.form.upload).to_uppercase()
+            ),
+            muted_style(),
+        )),
+        Line::default(),
         Line::from(Span::styled(
             "tab/backtab or arrows move between fields",
             muted_style(),
@@ -1123,7 +1199,7 @@ fn render_center_help(frame: &mut Frame, state: &CenterTuiState, area: Rect) {
 
     frame.render_widget(
         Paragraph::new(lines)
-            .block(panel_block(Borders::ALL))
+            .block(titled_panel("FIELD GUIDE", PanelTone::Info))
             .wrap(Wrap { trim: true }),
         area,
     );
@@ -1131,15 +1207,13 @@ fn render_center_help(frame: &mut Frame, state: &CenterTuiState, area: Rect) {
 
 fn render_completion_metadata(frame: &mut Frame, completed: &CenterCompletedState, area: Rect) {
     let mut lines = vec![
-        Line::from(Span::styled("RUN OUTPUTS", headline_style())),
-        Line::default(),
         render_finding_meta_line(
             "JSON",
             completed
                 .json_written
                 .clone()
                 .unwrap_or_else(|| "off".to_string()),
-            body_style(),
+            output_style(completed.json_written.is_some()),
         ),
         render_finding_meta_line(
             "HTML",
@@ -1147,7 +1221,7 @@ fn render_completion_metadata(frame: &mut Frame, completed: &CenterCompletedStat
                 .html_written
                 .clone()
                 .unwrap_or_else(|| "off".to_string()),
-            body_style(),
+            output_style(completed.html_written.is_some()),
         ),
         render_finding_meta_line(
             "UPLOAD",
@@ -1156,9 +1230,17 @@ fn render_completion_metadata(frame: &mut Frame, completed: &CenterCompletedStat
             } else {
                 "off".to_string()
             },
-            body_style(),
+            output_style(completed.upload_requested),
         ),
-        render_finding_meta_line("EXIT", completed.exit_code.to_string(), body_style()),
+        render_finding_meta_line(
+            "EXIT",
+            completed.exit_code.to_string(),
+            if completed.exit_code == 0 {
+                output_style(true)
+            } else {
+                emphasis_style(PanelTone::Warning)
+            },
+        ),
     ];
 
     if let Some(scan_run_id) = completed.scan_run_id.as_ref() {
@@ -1193,7 +1275,10 @@ fn render_completion_metadata(frame: &mut Frame, completed: &CenterCompletedStat
 
     frame.render_widget(
         Paragraph::new(lines)
-            .block(panel_block(Borders::ALL))
+            .block(titled_panel(
+                "ARTIFACT FINALIZATION",
+                completed.banner().tone,
+            ))
             .wrap(Wrap { trim: true }),
         area,
     );
@@ -1205,15 +1290,21 @@ fn render_center_footer(frame: &mut Frame, state: &CenterTuiState, area: Rect, c
         .clone()
         .unwrap_or_else(|| "AgentPrey control center ready.".to_string());
     let lines = vec![
-        Line::from(Span::styled("CONTROLS / STATUS", headline_style())),
         Line::from(Span::styled(controls, muted_style())),
         Line::from(Span::styled(
             compact_excerpt(&message, area.width.saturating_sub(4) as usize),
-            muted_style(),
+            if matches!(state.view, CenterView::Completed) {
+                body_style()
+            } else {
+                muted_style()
+            },
         )),
     ];
 
-    frame.render_widget(Paragraph::new(lines).block(panel_block(Borders::ALL)), area);
+    frame.render_widget(
+        Paragraph::new(lines).block(titled_panel("COMMAND LANE", PanelTone::Neutral)),
+        area,
+    );
 }
 
 fn completion_exit_code(outcome: &ScanOutcome, finalization_failed: bool) -> u8 {
@@ -1411,6 +1502,8 @@ struct RecentFinding {
     duration_ms: u128,
     response: String,
     indicator_hits: Vec<String>,
+    evidence_summary: String,
+    recommendation: String,
 }
 
 impl From<&FindingOutcome> for RecentFinding {
@@ -1429,6 +1522,8 @@ impl From<&FindingOutcome> for RecentFinding {
                 .as_ref()
                 .map(|analysis| analysis.indicator_hits.clone())
                 .unwrap_or_default(),
+            evidence_summary: finding.evidence_summary.clone(),
+            recommendation: finding.recommendation.clone(),
         }
     }
 }
@@ -1448,6 +1543,33 @@ impl SegmentSummary {
             (self.resistant * 100) / self.total
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PanelTone {
+    Neutral,
+    Info,
+    Warning,
+    Critical,
+    Success,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CompletionBanner {
+    title: &'static str,
+    detail: String,
+    guidance: String,
+    tone: PanelTone,
+}
+
+#[derive(Debug, Clone)]
+struct TimelineEntry {
+    sequence: usize,
+    status: FindingStatus,
+    severity: Severity,
+    vector_label: String,
+    area_label: String,
+    duration_label: String,
 }
 
 #[derive(Debug, Clone)]
@@ -1538,6 +1660,10 @@ impl TuiState {
         (self.completed_vectors as f64 / self.total_vectors as f64).clamp(0.0, 1.0)
     }
 
+    fn pending_vectors(&self) -> usize {
+        self.total_vectors.saturating_sub(self.completed_vectors)
+    }
+
     fn status_label(&self) -> &'static str {
         if self.finished {
             "SCAN COMPLETE"
@@ -1545,6 +1671,114 @@ impl TuiState {
             "PRIMING VECTORS"
         } else {
             "SCANNING LIVE"
+        }
+    }
+
+    fn tone(&self) -> PanelTone {
+        if self.finished {
+            if self.error_count > 0 && self.vulnerable_count > 0 {
+                PanelTone::Critical
+            } else if self.error_count > 0 {
+                PanelTone::Warning
+            } else if self.vulnerable_count > 0 {
+                PanelTone::Critical
+            } else {
+                PanelTone::Success
+            }
+        } else if self.total_vectors == 0 {
+            PanelTone::Info
+        } else {
+            PanelTone::Critical
+        }
+    }
+
+    fn progress_label(&self) -> String {
+        if self.total_vectors == 0 {
+            "vector catalog pending".to_string()
+        } else if self.finished {
+            format!(
+                "{}/{} vectors settled",
+                self.completed_vectors, self.total_vectors
+            )
+        } else {
+            format!(
+                "{}/{} settled  {}/{} pending",
+                self.completed_vectors,
+                self.total_vectors,
+                self.pending_vectors(),
+                self.total_vectors
+            )
+        }
+    }
+
+    fn completion_banner(&self) -> CompletionBanner {
+        if self.error_count > 0 && self.vulnerable_count > 0 {
+            return CompletionBanner {
+                title: "EXPOSURES AND ERRORS DETECTED",
+                detail: format!(
+                    "{} vulnerable, {} resistant, {} errors across {} vectors in {}.",
+                    self.vulnerable_count,
+                    self.resistant_count,
+                    self.error_count,
+                    self.total_vectors,
+                    format_duration(self.elapsed)
+                ),
+                guidance: "Review the primary signal and artifact outputs before closing."
+                    .to_string(),
+                tone: PanelTone::Critical,
+            };
+        }
+
+        if self.error_count > 0 {
+            return CompletionBanner {
+                title: "RUN COMPLETED WITH ERRORS",
+                detail: format!(
+                    "{} resistant, {} errors across {} vectors in {}.",
+                    self.resistant_count,
+                    self.error_count,
+                    self.total_vectors,
+                    format_duration(self.elapsed)
+                ),
+                guidance: "Inspect runtime failures before treating this run as clean.".to_string(),
+                tone: PanelTone::Warning,
+            };
+        }
+
+        if self.vulnerable_count > 0 {
+            return CompletionBanner {
+                title: "EXPOSURES DETECTED",
+                detail: format!(
+                    "{} vulnerable, {} resistant across {} vectors in {}.",
+                    self.vulnerable_count,
+                    self.resistant_count,
+                    self.total_vectors,
+                    format_duration(self.elapsed)
+                ),
+                guidance: "Escalate the featured signal and use the artifacts for repro."
+                    .to_string(),
+                tone: PanelTone::Critical,
+            };
+        }
+
+        CompletionBanner {
+            title: "RESISTANCE HOLDING",
+            detail: format!(
+                "{} vectors completed in {} with no exposures or runtime errors.",
+                self.total_vectors,
+                format_duration(self.elapsed)
+            ),
+            guidance: "Capture the clean result and continue to the next target.".to_string(),
+            tone: PanelTone::Success,
+        }
+    }
+
+    fn preview_exit_code(&self) -> u8 {
+        if self.error_count > 0 {
+            2
+        } else if self.vulnerable_count > 0 {
+            1
+        } else {
+            0
         }
     }
 
@@ -1567,6 +1801,33 @@ impl TuiState {
         }
 
         self.recent_findings.push_back(RecentFinding::from(finding));
+    }
+
+    fn timeline_entries(&self, limit: usize) -> Vec<TimelineEntry> {
+        if limit == 0 {
+            return Vec::new();
+        }
+
+        let total_recent = self.recent_findings.len();
+        let first_sequence = self.completed_vectors.saturating_sub(total_recent) + 1;
+
+        self.recent_findings
+            .iter()
+            .enumerate()
+            .rev()
+            .take(limit)
+            .map(|(index, finding)| TimelineEntry {
+                sequence: first_sequence + index,
+                status: finding.status,
+                severity: finding.severity.clone(),
+                vector_label: format!("{} ({})", finding.vector_name, finding.vector_id),
+                area_label: format!("{}/{}", finding.category, finding.subcategory),
+                duration_label: compact_duration(finding.duration_ms),
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect()
     }
 
     fn segment_summaries(&self) -> Vec<SegmentSummary> {
@@ -1622,23 +1883,28 @@ fn render(frame: &mut Frame, state: &TuiState) {
 }
 
 fn render_dashboard(frame: &mut Frame, state: &TuiState, area: Rect) {
+    if state.finished && area.width >= 88 && area.height >= 24 {
+        render_completion_dashboard(frame, state, area);
+        return;
+    }
+
     let sections = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .constraints([Constraint::Length(4), Constraint::Min(0)])
         .split(area);
     render_dashboard_header(frame, state, sections[0]);
 
     if area.width >= 100 && area.height >= 24 {
         let body = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(27), Constraint::Percentage(73)])
+            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
             .split(sections[1]);
         let left = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
+                Constraint::Length(11),
                 Constraint::Length(10),
-                Constraint::Min(8),
-                Constraint::Length(5),
+                Constraint::Length(6),
             ])
             .split(body[0]);
         let right = Layout::default()
@@ -1647,7 +1913,7 @@ fn render_dashboard(frame: &mut Frame, state: &TuiState, area: Rect) {
             .split(body[1]);
 
         render_dashboard_summary(frame, state, left[0]);
-        render_active_vectors(frame, state, left[1]);
+        render_progress_panel(frame, state, left[1]);
         render_dashboard_footer(frame, state, left[2]);
         render_execution_log(frame, state, right[0]);
         render_featured_panel(frame, state, right[1], false);
@@ -1657,73 +1923,62 @@ fn render_dashboard(frame: &mut Frame, state: &TuiState, area: Rect) {
     let body = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(11),
             Constraint::Length(10),
             Constraint::Min(8),
-            Constraint::Length(8),
-            Constraint::Length(5),
+            Constraint::Length(12),
+            Constraint::Length(6),
         ])
         .split(sections[1]);
 
     render_dashboard_summary(frame, state, body[0]);
-    render_execution_log(frame, state, body[1]);
-    render_active_vectors(frame, state, body[2]);
-    render_dashboard_footer(frame, state, body[3]);
+    render_progress_panel(frame, state, body[1]);
+    render_execution_log(frame, state, body[2]);
+    render_featured_panel(frame, state, body[3], false);
+    render_dashboard_footer(frame, state, body[4]);
 }
 
 fn render_dashboard_header(frame: &mut Frame, state: &TuiState, area: Rect) {
     let lines = vec![
         Line::from(vec![
-            Span::styled(
-                format!("AGENTPREY V{}", env!("CARGO_PKG_VERSION")),
-                headline_style(),
-            ),
-            Span::raw("    "),
             Span::styled("TARGET: ", label_style()),
             Span::styled(
                 truncate_text(&state.target, area.width.saturating_sub(38) as usize),
                 Style::default().fg(INFO_COLOR),
             ),
-        ]),
-        Line::from(vec![
+            Span::raw("    "),
             Span::styled("MODE: ", label_style()),
             Span::styled(target_type_label(state.target_type), body_style()),
-            Span::raw("    "),
+        ]),
+        Line::from(vec![
             Span::styled("FILTER: ", label_style()),
             Span::styled(state.category.as_deref().unwrap_or("auto"), muted_style()),
             Span::raw("    "),
             Span::styled("STATUS: ", label_style()),
             Span::styled(state.status_label(), dashboard_status_style(state)),
+            Span::raw("    "),
+            Span::styled("POSTURE: ", label_style()),
+            Span::styled(
+                format!("{} / {}", state.score.grade, state.score.score),
+                emphasis_style(state.tone()),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("PROGRESS: ", label_style()),
+            Span::styled(state.progress_label(), body_style()),
         ]),
     ];
 
-    frame.render_widget(Paragraph::new(lines).block(panel_block(Borders::ALL)), area);
+    frame.render_widget(
+        Paragraph::new(lines).block(titled_panel("SCAN CONSOLE", state.tone())),
+        area,
+    );
 }
 
 fn render_dashboard_summary(frame: &mut Frame, state: &TuiState, area: Rect) {
     let segments = state.segment_summaries();
-    let footer_line = if state.finished {
-        Line::from(vec![
-            Span::styled("STATE:", label_style()),
-            Span::raw(" "),
-            Span::styled("FINAL", body_style()),
-            Span::raw("  "),
-            Span::styled("PROG ", label_style()),
-            progress_bar_line(state.progress_ratio(), true),
-        ])
-    } else {
-        Line::from(vec![
-            Span::styled("STATE:", label_style()),
-            Span::raw(" "),
-            Span::styled("PROVISIONAL", muted_style()),
-            Span::raw("  "),
-            Span::styled("PROG ", label_style()),
-            progress_bar_line(state.progress_ratio(), false),
-        ])
-    };
 
     let mut lines = vec![
-        Line::from(Span::styled("SCAN STATUS", headline_style())),
-        Line::default(),
         Line::from(vec![
             Span::styled("GRADE:", label_style()),
             Span::raw(" "),
@@ -1762,69 +2017,116 @@ fn render_dashboard_summary(frame: &mut Frame, state: &TuiState, area: Rect) {
             Span::styled("ELAPSED:", label_style()),
             Span::raw(" "),
             Span::styled(format_duration(state.elapsed), body_style()),
+            Span::raw("  "),
+            Span::styled("STATE:", label_style()),
+            Span::raw(" "),
+            Span::styled(
+                if state.finished { "FINAL" } else { "LIVE" },
+                if state.finished {
+                    body_style()
+                } else {
+                    emphasis_style(PanelTone::Info)
+                },
+            ),
         ]),
         Line::default(),
     ];
 
-    for segment in segments.iter().take(2) {
+    for segment in segments.iter().take(3) {
         lines.push(render_segment_line(segment));
     }
 
     lines.push(Line::default());
-    lines.push(footer_line);
+    lines.push(Line::from(vec![
+        Span::styled("SEVERITY:", label_style()),
+        Span::raw(" "),
+        severity_count_span(
+            "CRIT",
+            state.score.vulnerable_severities.critical,
+            ACCENT_COLOR,
+        ),
+        Span::raw("  "),
+        severity_count_span("HIGH", state.score.vulnerable_severities.high, ACCENT_COLOR),
+        Span::raw("  "),
+        severity_count_span(
+            "MED",
+            state.score.vulnerable_severities.medium,
+            WARNING_COLOR,
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("POSTURE:", label_style()),
+        Span::raw(" "),
+        progress_bar_line(state.progress_ratio(), state.finished),
+    ]));
 
-    frame.render_widget(Paragraph::new(lines).block(panel_block(Borders::ALL)), area);
+    frame.render_widget(
+        Paragraph::new(lines).block(titled_panel("SCORECARD", state.tone())),
+        area,
+    );
 }
 
-fn render_active_vectors(frame: &mut Frame, state: &TuiState, area: Rect) {
+fn render_progress_panel(frame: &mut Frame, state: &TuiState, area: Rect) {
+    let progress_width = area.width.saturating_sub(14).clamp(10, 28) as usize;
     let mut lines = vec![
-        Line::from(Span::styled("ACTIVE VECTORS", headline_style())),
+        Line::from(vec![
+            Span::styled("STAGE:", label_style()),
+            Span::raw(" "),
+            Span::styled(state.status_label(), emphasis_style(state.tone())),
+        ]),
+        Line::from(vec![
+            Span::styled("FLOW:", label_style()),
+            Span::raw(" "),
+            progress_meter_line(state.progress_ratio(), state.finished, progress_width),
+        ]),
+        Line::from(vec![
+            Span::styled("COUNT:", label_style()),
+            Span::raw(" "),
+            Span::styled(state.progress_label(), body_style()),
+        ]),
+        Line::from(vec![
+            Span::styled("SIGNALS:", label_style()),
+            Span::raw(" "),
+            Span::styled(
+                format!(
+                    "vuln {}  resistant {}  errors {}  pending {}",
+                    state.vulnerable_count,
+                    state.resistant_count,
+                    state.error_count,
+                    state.pending_vectors()
+                ),
+                body_style(),
+            ),
+        ]),
         Line::default(),
     ];
 
-    let recent = state
-        .recent_findings
-        .iter()
-        .rev()
-        .take(area.height.saturating_sub(4) as usize)
-        .collect::<Vec<_>>();
-
-    if recent.is_empty() {
+    if state.recent_findings.is_empty() {
         lines.push(Line::from(Span::styled(
-            "[ ] waiting for first finding...",
+            "No vector results yet. The pipeline view will populate as findings settle.",
             muted_style(),
         )));
     } else {
-        for finding in recent {
-            let marker = match finding.status {
-                FindingStatus::Vulnerable => "[x]",
-                FindingStatus::Resistant => "[+]",
-                FindingStatus::Error => "[!]",
-            };
-            let verdict = match finding.status {
-                FindingStatus::Vulnerable => "FAIL",
-                FindingStatus::Resistant => "PASS",
-                FindingStatus::Error => "ERR ",
-            };
-            let verdict_style = match finding.status {
-                FindingStatus::Vulnerable => status_style(FindingStatus::Vulnerable),
-                FindingStatus::Resistant => status_style(FindingStatus::Resistant),
-                FindingStatus::Error => status_style(FindingStatus::Error),
-            };
-
+        for finding in state.recent_findings.iter().rev().take(3).rev() {
             lines.push(Line::from(vec![
-                Span::styled(marker, verdict_style),
+                Span::styled(status_marker(finding.status), status_style(finding.status)),
                 Span::raw(" "),
-                Span::styled(truncate_text(&finding.vector_id, 20), body_style()),
+                Span::styled(
+                    truncate_text(&finding.vector_id, area.width.saturating_sub(10) as usize),
+                    body_style(),
+                ),
                 Span::raw(" "),
-                Span::styled(verdict, verdict_style),
+                Span::styled(
+                    compact_duration(finding.duration_ms),
+                    severity_style(&finding.severity),
+                ),
             ]));
         }
     }
 
     frame.render_widget(
         Paragraph::new(lines)
-            .block(panel_block(Borders::ALL))
+            .block(titled_panel("PIPELINE", state.tone()))
             .wrap(Wrap { trim: true }),
         area,
     );
@@ -1855,24 +2157,19 @@ fn render_dashboard_footer(frame: &mut Frame, state: &TuiState, area: Rect) {
 
     frame.render_widget(
         Paragraph::new(vec![
-            Line::from(Span::styled("CONTROLS / OUTPUTS", headline_style())),
-            Line::default(),
             Line::from(Span::styled(exit_copy, muted_style())),
             Line::from(Span::styled(
                 format!("{json_copy}  {html_copy}  {upload_copy}"),
-                muted_style(),
+                body_style(),
             )),
         ])
-        .block(panel_block(Borders::ALL)),
+        .block(titled_panel("COMMAND LANE", PanelTone::Neutral)),
         area,
     );
 }
 
 fn render_execution_log(frame: &mut Frame, state: &TuiState, area: Rect) {
-    let mut lines = vec![
-        Line::from(Span::styled("EXECUTION LOG", headline_style())),
-        Line::default(),
-    ];
+    let mut lines = Vec::new();
 
     if state.recent_findings.is_empty() {
         lines.push(Line::from(Span::styled(
@@ -1884,30 +2181,22 @@ fn render_execution_log(frame: &mut Frame, state: &TuiState, area: Rect) {
             muted_style(),
         )));
     } else {
-        let visible = area.height.saturating_sub(4) as usize;
-        let recent = state
-            .recent_findings
-            .iter()
-            .rev()
-            .take(visible)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>();
-
-        for finding in recent {
+        let visible = area.height.saturating_sub(2) as usize;
+        for entry in state.timeline_entries(visible) {
             lines.push(Line::from(vec![
+                Span::styled(format!("{:>02} ", entry.sequence), muted_style()),
                 Span::styled(
-                    format!("[{}] ", compact_duration(finding.duration_ms)),
-                    muted_style(),
+                    format!("{:<4} ", log_status_label(entry.status)),
+                    status_style(entry.status),
                 ),
                 Span::styled(
-                    format!("[{}] ", log_status_label(finding.status)),
-                    status_style(finding.status),
+                    format!("{:<4} ", entry.severity.to_string().to_uppercase()),
+                    severity_style(&entry.severity),
                 ),
+                Span::styled(format!("{:>5} ", entry.duration_label), muted_style()),
                 Span::styled(
                     truncate_text(
-                        &format!("{} ({})", finding.vector_name, finding.vector_id),
+                        &format!("{}  {}", entry.area_label, entry.vector_label),
                         area.width.saturating_sub(22) as usize,
                     ),
                     body_style(),
@@ -1918,14 +2207,14 @@ fn render_execution_log(frame: &mut Frame, state: &TuiState, area: Rect) {
 
     frame.render_widget(
         Paragraph::new(lines)
-            .block(panel_block(Borders::ALL))
+            .block(titled_panel("SCAN TIMELINE", state.tone()))
             .wrap(Wrap { trim: true }),
         area,
     );
 }
 
 fn render_featured_panel(frame: &mut Frame, state: &TuiState, area: Rect, wide_layout: bool) {
-    let outer = panel_block(Borders::NONE);
+    let outer = Block::default().style(Style::default().bg(Color::Black));
     frame.render_widget(outer, area);
 
     let inner = if wide_layout {
@@ -1942,15 +2231,11 @@ fn render_featured_panel(frame: &mut Frame, state: &TuiState, area: Rect, wide_l
 
     let Some(featured) = FeaturedPanelData::from_state(state) else {
         frame.render_widget(
-            Paragraph::new(vec![
-                Line::from(Span::styled("FINDING PANEL", headline_style())),
-                Line::default(),
-                Line::from(Span::styled(
-                    "No findings yet. The panel will lock onto the strongest signal once vectors begin returning.",
-                    muted_style(),
-                )),
-            ])
-            .block(finding_block())
+            Paragraph::new(vec![Line::from(Span::styled(
+                "No findings yet. The panel will lock onto the strongest signal once vectors begin returning.",
+                muted_style(),
+            ))])
+            .block(finding_block("PRIMARY SIGNAL", PanelTone::Neutral))
             .wrap(Wrap { trim: true }),
             inner,
         );
@@ -1959,18 +2244,11 @@ fn render_featured_panel(frame: &mut Frame, state: &TuiState, area: Rect, wide_l
 
     let mut lines = vec![
         Line::from(Span::styled(
-            format!(
-                "FINDING: {}",
-                truncate_text(
-                    &featured.vector_name.to_uppercase(),
-                    inner.width.saturating_sub(4) as usize
-                )
+            truncate_text(
+                &featured.vector_name.to_uppercase(),
+                inner.width.saturating_sub(4) as usize,
             ),
-            headline_style(),
-        )),
-        Line::from(Span::styled(
-            rule(inner.width.saturating_sub(4) as usize),
-            muted_style(),
+            emphasis_style(status_tone(featured.status)),
         )),
         render_finding_meta_line(
             "SEVERITY",
@@ -1992,10 +2270,28 @@ fn render_featured_panel(frame: &mut Frame, state: &TuiState, area: Rect, wide_l
         Line::default(),
     ];
 
-    if featured.indicator_hits.is_empty() {
+    if state.finished {
+        lines.push(Line::from(Span::styled("SUMMARY:", label_style())));
+        lines.push(Line::from(Span::styled(
+            compact_excerpt(
+                &featured.evidence_summary,
+                inner.width.saturating_sub(4) as usize,
+            ),
+            body_style(),
+        )));
+        lines.push(Line::default());
+        lines.push(Line::from(Span::styled("ACTION:", label_style())));
+        lines.push(Line::from(Span::styled(
+            compact_excerpt(
+                &featured.recommendation,
+                inner.width.saturating_sub(4) as usize,
+            ),
+            muted_style(),
+        )));
+    } else if featured.indicator_hits.is_empty() {
         lines.push(Line::from(Span::styled("RESPONSE:", label_style())));
         lines.push(Line::from(Span::styled(
-            compact_excerpt(&featured.response, 220),
+            compact_excerpt(&featured.response, inner.width.saturating_sub(4) as usize),
             muted_style(),
         )));
     } else {
@@ -2010,33 +2306,115 @@ fn render_featured_panel(frame: &mut Frame, state: &TuiState, area: Rect, wide_l
 
     frame.render_widget(
         Paragraph::new(Text::from(lines))
-            .block(finding_block())
+            .block(finding_block(
+                "PRIMARY SIGNAL",
+                status_tone(featured.status),
+            ))
             .wrap(Wrap { trim: true }),
         inner,
     );
 }
 
-fn panel_block(borders: Borders) -> Block<'static> {
-    Block::default()
-        .borders(borders)
-        .border_style(Style::default().fg(BORDER_COLOR))
-        .style(Style::default().bg(Color::Black).fg(TEXT_COLOR))
+fn render_completion_dashboard(frame: &mut Frame, state: &TuiState, area: Rect) {
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(4),
+            Constraint::Length(7),
+            Constraint::Min(0),
+            Constraint::Length(6),
+        ])
+        .split(area);
+    let body = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(36), Constraint::Percentage(64)])
+        .split(sections[2]);
+    let left = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(12), Constraint::Min(10)])
+        .split(body[0]);
+    let right = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(10), Constraint::Length(12)])
+        .split(body[1]);
+
+    render_dashboard_header(frame, state, sections[0]);
+    render_completion_banner_panel(
+        frame,
+        &state.completion_banner(),
+        sections[1],
+        state.preview_exit_code(),
+    );
+    render_dashboard_summary(frame, state, left[0]);
+    render_progress_panel(frame, state, left[1]);
+    render_execution_log(frame, state, right[0]);
+    render_featured_panel(frame, state, right[1], true);
+    render_dashboard_footer(frame, state, sections[3]);
 }
 
-fn finding_block() -> Block<'static> {
+fn render_completion_banner_panel(
+    frame: &mut Frame,
+    banner: &CompletionBanner,
+    area: Rect,
+    exit_code: u8,
+) {
+    let lines = vec![
+        Line::from(Span::styled(banner.title, emphasis_style(banner.tone))),
+        Line::from(Span::styled(
+            compact_excerpt(&banner.detail, area.width.saturating_sub(4) as usize),
+            body_style(),
+        )),
+        Line::from(vec![
+            Span::styled("GUIDANCE: ", label_style()),
+            Span::styled(
+                compact_excerpt(&banner.guidance, area.width.saturating_sub(15) as usize),
+                muted_style(),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("EXIT CODE: ", label_style()),
+            Span::styled(
+                exit_code.to_string(),
+                if exit_code == 0 {
+                    output_style(true)
+                } else {
+                    emphasis_style(PanelTone::Warning)
+                },
+            ),
+        ]),
+    ];
+
+    frame.render_widget(
+        Paragraph::new(lines).block(titled_panel("RUN COMPLETION", banner.tone)),
+        area,
+    );
+}
+
+fn titled_panel(title: &str, tone: PanelTone) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(BORDER_COLOR))
+        .title(Span::styled(format!(" {title} "), panel_title_style(tone)))
+        .border_style(panel_border_style(tone))
         .style(Style::default().bg(Color::Black).fg(TEXT_COLOR))
 }
 
-fn rule(width: usize) -> String {
-    "─".repeat(width.max(8))
+fn finding_block(title: &str, tone: PanelTone) -> Block<'static> {
+    Block::default()
+        .borders(Borders::ALL)
+        .title(Span::styled(format!(" {title} "), panel_title_style(tone)))
+        .border_style(panel_border_style(tone))
+        .style(Style::default().bg(Color::Black).fg(TEXT_COLOR))
 }
 
 fn render_segment_line(segment: &SegmentSummary) -> Line<'static> {
     let pct = segment.pct();
-    let color = if pct >= 50 { TEXT_COLOR } else { ACCENT_COLOR };
+    let color = if pct >= 80 {
+        SUCCESS_COLOR
+    } else if pct >= 50 {
+        WARNING_COLOR
+    } else {
+        ACCENT_COLOR
+    };
 
     Line::from(vec![
         Span::styled(
@@ -2050,9 +2428,13 @@ fn render_segment_line(segment: &SegmentSummary) -> Line<'static> {
 }
 
 fn progress_bar_line(ratio: f64, finished: bool) -> Span<'static> {
+    progress_meter_line(ratio, finished, 14)
+}
+
+fn progress_meter_line(ratio: f64, finished: bool, width: usize) -> Span<'static> {
     let pct = (ratio * 100.0).round() as usize;
-    let color = if finished { TEXT_COLOR } else { ACCENT_COLOR };
-    let bar = bar_cells(pct, 14);
+    let color = if finished { SUCCESS_COLOR } else { INFO_COLOR };
+    let bar = bar_cells(pct, width);
     Span::styled(format!("{bar} {:>3}%", pct), Style::default().fg(color))
 }
 
@@ -2071,6 +2453,21 @@ fn render_finding_meta_line(label: &str, value: String, value_style: Style) -> L
         Span::styled(format!("{label:<9}"), label_style()),
         Span::styled(value, value_style),
     ])
+}
+
+fn severity_count_span(label: &str, count: usize, color: Color) -> Span<'static> {
+    Span::styled(
+        format!("{label} {count}"),
+        Style::default().fg(color).add_modifier(Modifier::BOLD),
+    )
+}
+
+fn status_marker(status: FindingStatus) -> &'static str {
+    match status {
+        FindingStatus::Vulnerable => "[x]",
+        FindingStatus::Resistant => "[+]",
+        FindingStatus::Error => "[!]",
+    }
 }
 
 fn target_type_label(target_type: TargetType) -> &'static str {
@@ -2174,17 +2571,39 @@ fn label_style() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
-fn headline_style() -> Style {
-    Style::default().fg(TEXT_COLOR).add_modifier(Modifier::BOLD)
-}
-
 fn primary_metric_style() -> Style {
     Style::default().fg(TEXT_COLOR).add_modifier(Modifier::BOLD)
 }
 
+fn emphasis_style(tone: PanelTone) -> Style {
+    match tone {
+        PanelTone::Neutral => Style::default().fg(TEXT_COLOR).add_modifier(Modifier::BOLD),
+        PanelTone::Info => Style::default().fg(INFO_COLOR).add_modifier(Modifier::BOLD),
+        PanelTone::Warning => Style::default()
+            .fg(WARNING_COLOR)
+            .add_modifier(Modifier::BOLD),
+        PanelTone::Critical => Style::default()
+            .fg(ACCENT_COLOR)
+            .add_modifier(Modifier::BOLD),
+        PanelTone::Success => Style::default()
+            .fg(SUCCESS_COLOR)
+            .add_modifier(Modifier::BOLD),
+    }
+}
+
+fn output_style(enabled: bool) -> Style {
+    if enabled {
+        emphasis_style(PanelTone::Success)
+    } else {
+        muted_style()
+    }
+}
+
 fn grade_style(grade: Grade) -> Style {
     match grade {
-        Grade::A | Grade::B => Style::default().fg(TEXT_COLOR).add_modifier(Modifier::BOLD),
+        Grade::A | Grade::B => Style::default()
+            .fg(SUCCESS_COLOR)
+            .add_modifier(Modifier::BOLD),
         Grade::C => Style::default()
             .fg(WARNING_COLOR)
             .add_modifier(Modifier::BOLD),
@@ -2199,7 +2618,9 @@ fn status_style(status: FindingStatus) -> Style {
         FindingStatus::Vulnerable => Style::default()
             .fg(ACCENT_COLOR)
             .add_modifier(Modifier::BOLD),
-        FindingStatus::Resistant => Style::default().fg(TEXT_COLOR).add_modifier(Modifier::BOLD),
+        FindingStatus::Resistant => Style::default()
+            .fg(SUCCESS_COLOR)
+            .add_modifier(Modifier::BOLD),
         FindingStatus::Error => Style::default()
             .fg(WARNING_COLOR)
             .add_modifier(Modifier::BOLD),
@@ -2222,13 +2643,43 @@ fn severity_style(severity: &Severity) -> Style {
 
 fn dashboard_status_style(state: &TuiState) -> Style {
     if state.finished {
-        Style::default().fg(TEXT_COLOR).add_modifier(Modifier::BOLD)
+        emphasis_style(state.tone())
     } else if state.total_vectors == 0 {
-        Style::default().fg(INFO_COLOR).add_modifier(Modifier::BOLD)
+        emphasis_style(PanelTone::Info)
     } else {
-        Style::default()
-            .fg(ACCENT_COLOR)
-            .add_modifier(Modifier::BOLD)
+        emphasis_style(PanelTone::Critical)
+    }
+}
+
+fn panel_title_style(tone: PanelTone) -> Style {
+    let (fg, bg) = match tone {
+        PanelTone::Neutral => (TEXT_COLOR, BORDER_COLOR),
+        PanelTone::Info => (Color::Black, INFO_COLOR),
+        PanelTone::Warning => (Color::Black, WARNING_COLOR),
+        PanelTone::Critical => (Color::Black, ACCENT_COLOR),
+        PanelTone::Success => (Color::Black, SUCCESS_COLOR),
+    };
+
+    Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD)
+}
+
+fn panel_border_style(tone: PanelTone) -> Style {
+    let color = match tone {
+        PanelTone::Neutral => BORDER_COLOR,
+        PanelTone::Info => INFO_COLOR,
+        PanelTone::Warning => WARNING_COLOR,
+        PanelTone::Critical => ACCENT_COLOR,
+        PanelTone::Success => SUCCESS_COLOR,
+    };
+
+    Style::default().fg(color)
+}
+
+fn status_tone(status: FindingStatus) -> PanelTone {
+    match status {
+        FindingStatus::Vulnerable => PanelTone::Critical,
+        FindingStatus::Resistant => PanelTone::Success,
+        FindingStatus::Error => PanelTone::Warning,
     }
 }
 
@@ -2242,6 +2693,8 @@ struct FeaturedPanelData {
     duration_ms: u128,
     response: String,
     indicator_hits: Vec<String>,
+    evidence_summary: String,
+    recommendation: String,
 }
 
 impl FeaturedPanelData {
@@ -2271,6 +2724,8 @@ impl FeaturedPanelData {
                 .as_ref()
                 .map(|analysis| analysis.indicator_hits.clone())
                 .unwrap_or_default(),
+            evidence_summary: finding.evidence_summary.clone(),
+            recommendation: finding.recommendation.clone(),
         }
     }
 
@@ -2285,6 +2740,8 @@ impl FeaturedPanelData {
             duration_ms: finding.duration_ms,
             response: finding.response.clone(),
             indicator_hits: finding.indicator_hits.clone(),
+            evidence_summary: finding.evidence_summary.clone(),
+            recommendation: finding.recommendation.clone(),
         }
     }
 }
@@ -2292,7 +2749,8 @@ impl FeaturedPanelData {
 #[cfg(test)]
 mod tests {
     use super::{
-        completion_exit_code, CenterField, CenterForm, TuiEvent, TuiState, MAX_RECENT_FINDINGS,
+        completion_exit_code, render, CenterCompletedState, CenterField, CenterForm, PanelTone,
+        TuiEvent, TuiState, MAX_RECENT_FINDINGS,
     };
     use crate::{
         cli::TargetType,
@@ -2303,6 +2761,7 @@ mod tests {
         scorer::{Grade, ScoreSummary, SeverityCounts},
         vectors::model::Severity,
     };
+    use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
     use std::path::PathBuf;
     use std::time::Duration;
 
@@ -2349,6 +2808,57 @@ mod tests {
             evidence_summary: "test evidence".to_string(),
             recommendation: "test recommendation".to_string(),
         })
+    }
+
+    fn sample_outcome(findings: Vec<FindingOutcome>) -> ScanOutcome {
+        let vulnerable_count = findings
+            .iter()
+            .filter(|finding| finding.status == FindingStatus::Vulnerable)
+            .count();
+        let resistant_count = findings
+            .iter()
+            .filter(|finding| finding.status == FindingStatus::Resistant)
+            .count();
+        let error_count = findings
+            .iter()
+            .filter(|finding| finding.status == FindingStatus::Error)
+            .count();
+        let score = crate::scorer::score_findings(&findings);
+
+        ScanOutcome {
+            target_type: TargetType::Http,
+            target: "http://127.0.0.1:8787/chat".to_string(),
+            mcp: None,
+            total_vectors: findings.len(),
+            vulnerable_count,
+            resistant_count,
+            error_count,
+            score,
+            findings,
+            duration_ms: 42,
+        }
+    }
+
+    fn render_text(state: &TuiState, width: u16, height: u16) -> String {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).expect("test terminal should initialize");
+        terminal
+            .draw(|frame| render(frame, state))
+            .expect("render should succeed");
+        buffer_to_string(terminal.backend().buffer())
+    }
+
+    fn buffer_to_string(buffer: &Buffer) -> String {
+        (0..buffer.area.height)
+            .map(|y| {
+                let mut line = String::new();
+                for x in 0..buffer.area.width {
+                    line.push_str(buffer[(x, y)].symbol());
+                }
+                line
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     #[test]
@@ -2413,6 +2923,24 @@ mod tests {
         ))));
 
         assert!((state.progress_ratio() - 0.25).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn completion_banner_escalates_errors_and_exposures() {
+        let mut state = TuiState::new(&settings(), false);
+        state.finish(
+            &sample_outcome(vec![
+                finding(1, FindingStatus::Vulnerable),
+                finding(2, FindingStatus::Error),
+            ]),
+            Duration::from_secs(3),
+        );
+
+        let banner = state.completion_banner();
+
+        assert_eq!(banner.title, "EXPOSURES AND ERRORS DETECTED");
+        assert_eq!(banner.tone, PanelTone::Critical);
+        assert_eq!(state.preview_exit_code(), 2);
     }
 
     #[test]
@@ -2492,6 +3020,26 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(labels, vec!["direct", "indirect", "multi-turn"]);
+    }
+
+    #[test]
+    fn timeline_entries_track_recent_sequence_numbers() {
+        let mut state = TuiState::new(&settings(), false);
+        state.apply_event(TuiEvent::Started { total: 6 });
+
+        for id in 1..=4 {
+            state.apply_event(TuiEvent::Finding(Box::new(finding(
+                id,
+                FindingStatus::Resistant,
+            ))));
+        }
+
+        let entries = state.timeline_entries(2);
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].sequence, 3);
+        assert_eq!(entries[1].sequence, 4);
+        assert!(entries[1].vector_label.contains("pi-004"));
     }
 
     #[test]
@@ -2594,5 +3142,50 @@ mod tests {
 
         assert_eq!(completion_exit_code(&outcome, false), 1);
         assert_eq!(completion_exit_code(&outcome, true), 2);
+    }
+
+    #[test]
+    fn center_completion_banner_prefers_finalization_warning() {
+        let mut dashboard = TuiState::new(&settings(), true);
+        dashboard.finish(
+            &sample_outcome(vec![finding(1, FindingStatus::Resistant)]),
+            Duration::from_secs(2),
+        );
+
+        let completed = CenterCompletedState {
+            dashboard,
+            json_written: Some("scan.json".to_string()),
+            html_written: Some("scan.html".to_string()),
+            upload_requested: true,
+            scan_run_id: None,
+            share_id: None,
+            share_url: None,
+            finalization_error: Some("failed to upload scan artifact: timeout".to_string()),
+            exit_code: 2,
+        };
+
+        let banner = completed.banner();
+
+        assert_eq!(banner.title, "FINALIZATION WARNING");
+        assert_eq!(banner.tone, PanelTone::Warning);
+    }
+
+    #[test]
+    fn finished_dashboard_renders_completion_banner() {
+        let mut state = TuiState::new(&settings(), false);
+        state.finish(
+            &sample_outcome(vec![
+                finding(1, FindingStatus::Vulnerable),
+                finding(2, FindingStatus::Resistant),
+            ]),
+            Duration::from_secs(4),
+        );
+
+        let rendered = render_text(&state, 120, 32);
+
+        assert!(rendered.contains("RUN COMPLETION"));
+        assert!(rendered.contains("EXPOSURES DETECTED"));
+        assert!(rendered.contains("PRIMARY SIGNAL"));
+        assert!(rendered.contains("SCAN TIMELINE"));
     }
 }

@@ -885,26 +885,29 @@ async fn finalize_center_run(
     let mut scan_run_id = None;
     let mut share_id = None;
     let mut share_url = None;
-
-    let json_written = settings
-        .json_out
-        .as_ref()
-        .map(|path| path.display().to_string());
-    let html_written = settings
-        .html_out
-        .as_ref()
-        .map(|path| path.display().to_string());
+    let mut json_written = None;
+    let mut html_written = None;
 
     if let Some(path) = settings.json_out.as_deref() {
-        if let Err(error) = write_scan_json(path, outcome) {
-            finalization_error = Some(format!("failed to write JSON output: {error}"));
+        match write_scan_json(path, outcome) {
+            Ok(()) => {
+                json_written = Some(path.display().to_string());
+            }
+            Err(error) => {
+                finalization_error = Some(format!("failed to write JSON output: {error}"));
+            }
         }
     }
 
     if finalization_error.is_none() {
         if let Some(path) = settings.html_out.as_deref() {
-            if let Err(error) = write_scan_html(path, outcome) {
-                finalization_error = Some(format!("failed to write HTML output: {error}"));
+            match write_scan_html(path, outcome) {
+                Ok(()) => {
+                    html_written = Some(path.display().to_string());
+                }
+                Err(error) => {
+                    finalization_error = Some(format!("failed to write HTML output: {error}"));
+                }
             }
         }
     }
@@ -2749,8 +2752,8 @@ impl FeaturedPanelData {
 #[cfg(test)]
 mod tests {
     use super::{
-        completion_exit_code, render, CenterCompletedState, CenterField, CenterForm, PanelTone,
-        TuiEvent, TuiState, MAX_RECENT_FINDINGS,
+        completion_exit_code, finalize_center_run, render, CenterCompletedState, CenterField,
+        CenterForm, PanelTone, TuiEvent, TuiState, MAX_RECENT_FINDINGS,
     };
     use crate::{
         cli::TargetType,
@@ -2764,6 +2767,7 @@ mod tests {
     use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
     use std::path::PathBuf;
     use std::time::Duration;
+    use tempfile::tempdir;
 
     fn settings() -> ResolvedScanSettings {
         ResolvedScanSettings {
@@ -3142,6 +3146,56 @@ mod tests {
 
         assert_eq!(completion_exit_code(&outcome, false), 1);
         assert_eq!(completion_exit_code(&outcome, true), 2);
+    }
+
+    #[tokio::test]
+    async fn finalize_center_run_only_reports_artifacts_after_successful_writes() {
+        let temp = tempdir().expect("tempdir should initialize");
+        let mut resolved = settings();
+        resolved.json_out = Some(temp.path().to_path_buf());
+        resolved.html_out = Some(temp.path().join("scan.html"));
+
+        let mut dashboard = TuiState::new(&resolved, true);
+        let outcome = sample_outcome(vec![finding(1, FindingStatus::Resistant)]);
+        dashboard.finish(&outcome, Duration::from_secs(2));
+
+        let completed = finalize_center_run(&resolved, &dashboard, &outcome, false).await;
+
+        assert!(completed.json_written.is_none());
+        assert!(completed.html_written.is_none());
+        assert_eq!(completed.exit_code, 2);
+        assert!(completed
+            .finalization_error
+            .as_deref()
+            .expect("expected finalization error")
+            .contains("failed to write JSON output"));
+    }
+
+    #[tokio::test]
+    async fn finalize_center_run_records_successful_artifact_writes() {
+        let temp = tempdir().expect("tempdir should initialize");
+        let json_path = temp.path().join("scan.json");
+        let html_path = temp.path().join("scan.html");
+        let mut resolved = settings();
+        resolved.json_out = Some(json_path.clone());
+        resolved.html_out = Some(html_path.clone());
+
+        let mut dashboard = TuiState::new(&resolved, true);
+        let outcome = sample_outcome(vec![finding(1, FindingStatus::Resistant)]);
+        dashboard.finish(&outcome, Duration::from_secs(2));
+
+        let completed = finalize_center_run(&resolved, &dashboard, &outcome, false).await;
+
+        assert_eq!(
+            completed.json_written.as_deref(),
+            Some(json_path.to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            completed.html_written.as_deref(),
+            Some(html_path.to_string_lossy().as_ref())
+        );
+        assert!(completed.finalization_error.is_none());
+        assert_eq!(completed.exit_code, 0);
     }
 
     #[test]

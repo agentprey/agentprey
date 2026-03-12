@@ -31,7 +31,7 @@ agentprey init
 Install a specific version:
 
 ```bash
-curl -fsSL https://agentprey.com/install | sh -s -- --version v0.4.0
+curl -fsSL https://agentprey.com/install | sh -s -- --version v0.5.0
 ```
 
 The installer places `agentprey` in `~/.local/bin` by default and currently supports Linux x86_64 plus Apple Silicon macOS. On other targets, use Cargo.

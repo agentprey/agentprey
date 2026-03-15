@@ -685,7 +685,7 @@ fn summarize_categories(findings: &[FindingOutcome]) -> BTreeMap<String, Categor
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{fs, path::Path};
 
     use tempfile::tempdir;
 
@@ -701,12 +701,8 @@ mod tests {
         vectors::model::Severity,
     };
 
-    #[test]
-    fn writes_html_report_with_summary_and_table() {
-        let temp = tempdir().expect("tempdir should be created");
-        let output = temp.path().join("reports/scan.html");
-
-        let outcome = ScanOutcome {
+    fn sample_http_outcome() -> ScanOutcome {
+        ScanOutcome {
             target_type: TargetType::Http,
             target: "http://127.0.0.1:8787/chat".to_string(),
             mcp: None,
@@ -745,26 +741,11 @@ mod tests {
                 recommendation: "Enforce non-overridable instruction boundaries.".to_string(),
             })],
             duration_ms: 12,
-        };
-
-        write_scan_html(&output, &outcome).expect("html report should be written");
-
-        let html = fs::read_to_string(&output).expect("html report should exist");
-        assert!(html.contains("AgentPrey Scan Report"));
-        assert!(html.contains("Basic Instruction Override"));
-        assert!(html.contains("Priority Findings"));
-        assert!(html.contains("Detailed Findings"));
-        assert!(html.contains("Bearer [REDACTED]"));
-        assert!(html.contains("Category Overview"));
-        assert!(html.contains("<table>"));
+        }
     }
 
-    #[test]
-    fn writes_html_report_with_mcp_and_openclaw_focus_sections() {
-        let temp = tempdir().expect("tempdir should be created");
-        let output = temp.path().join("reports/scan.html");
-
-        let outcome = ScanOutcome {
+    fn sample_openclaw_outcome_with_source_spans() -> ScanOutcome {
+        ScanOutcome {
             target_type: TargetType::Openclaw,
             target: "./fixtures/openclaw-risky".to_string(),
             mcp: Some(McpScanMetadata {
@@ -805,8 +786,8 @@ mod tests {
                 grade: Grade::C,
                 vulnerable_severities: SeverityCounts {
                     critical: 0,
-                    high: 3,
-                    medium: 0,
+                    high: 2,
+                    medium: 1,
                     low: 0,
                     info: 0,
                 },
@@ -846,14 +827,14 @@ mod tests {
                     Some(false),
                 ),
                 FindingOutcome::new(FindingOutcomeInput {
-                    rule_id: "tm-openclaw-001".to_string(),
-                    vector_id: "tm-openclaw-001".to_string(),
-                    vector_name: "Unsafe Tool Chaining".to_string(),
+                    rule_id: "tm-openclaw-structured-001".to_string(),
+                    vector_id: "tm-openclaw-structured-001".to_string(),
+                    vector_name: "OpenClaw Structured Shell Escalation".to_string(),
                     category: "tool-misuse".to_string(),
                     subcategory: "openclaw".to_string(),
                     severity: Severity::High,
-                    payload_name: "policy".to_string(),
-                    payload_prompt: "policy".to_string(),
+                    payload_name: "structured-analysis".to_string(),
+                    payload_prompt: "Scan workspace for unsafe command execution".to_string(),
                     status: FindingStatus::Vulnerable,
                     status_code: None,
                     response: "shell.exec and slack_webhook are chained together".to_string(),
@@ -862,6 +843,34 @@ mod tests {
                     rationale: "Tool chains can execute and exfiltrate in one hop.".to_string(),
                     evidence_summary: "shell.exec pairs with slack_webhook".to_string(),
                     recommendation: "Split dangerous capabilities.".to_string(),
+                })
+                .with_evidence(FindingEvidence {
+                    attack_surface: Some("runtime".to_string()),
+                    observed_capabilities: vec![
+                        "command-exec".to_string(),
+                        "network-egress".to_string(),
+                    ],
+                    evidence_kind: Some("structured-static".to_string()),
+                    repro_steps: vec![
+                        "Inspect src/agent.ts for shell.exec.".to_string(),
+                        "Inspect src/notify.ts for slack_webhook.".to_string(),
+                    ],
+                    mitigation_tags: vec![
+                        "approval-gating".to_string(),
+                        "egress-controls".to_string(),
+                    ],
+                    source_spans: vec![
+                        crate::scan::SourceSpan {
+                            file: "src/agent.ts".to_string(),
+                            line: 42,
+                            column: Some(9),
+                        },
+                        crate::scan::SourceSpan {
+                            file: "src/notify.ts".to_string(),
+                            line: 11,
+                            column: None,
+                        },
+                    ],
                 }),
                 FindingOutcome::new(FindingOutcomeInput {
                     rule_id: "ab-openclaw-001".to_string(),
@@ -869,7 +878,7 @@ mod tests {
                     vector_name: "Approval Never Policy".to_string(),
                     category: "approval-bypass".to_string(),
                     subcategory: "openclaw".to_string(),
-                    severity: Severity::High,
+                    severity: Severity::Medium,
                     payload_name: "policy".to_string(),
                     payload_prompt: "policy".to_string(),
                     status: FindingStatus::Vulnerable,
@@ -883,7 +892,58 @@ mod tests {
                 }),
             ],
             duration_ms: 33,
+        }
+    }
+
+    fn fixture_path(name: &str) -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join(name)
+    }
+
+    fn normalize_generated_at_ms(html: &str) -> String {
+        let needle = "Generated at ";
+        let Some(prefix_start) = html.find(needle) else {
+            panic!("HTML report should contain generated-at metadata");
         };
+        let number_start = prefix_start + needle.len();
+        let suffix = " ms since epoch";
+        let number_end = html[number_start..]
+            .find(suffix)
+            .map(|offset| number_start + offset)
+            .expect("HTML report should contain generated-at suffix");
+
+        let mut normalized = String::with_capacity(html.len());
+        normalized.push_str(&html[..number_start]);
+        normalized.push_str("__GENERATED_AT_MS__");
+        normalized.push_str(&html[number_end..]);
+        normalized
+    }
+
+    #[test]
+    fn writes_html_report_with_summary_and_table() {
+        let temp = tempdir().expect("tempdir should be created");
+        let output = temp.path().join("reports/scan.html");
+        let outcome = sample_http_outcome();
+
+        write_scan_html(&output, &outcome).expect("html report should be written");
+
+        let html = fs::read_to_string(&output).expect("html report should exist");
+        assert!(html.contains("AgentPrey Scan Report"));
+        assert!(html.contains("Basic Instruction Override"));
+        assert!(html.contains("Priority Findings"));
+        assert!(html.contains("Detailed Findings"));
+        assert!(html.contains("Bearer [REDACTED]"));
+        assert!(html.contains("Category Overview"));
+        assert!(html.contains("<table>"));
+    }
+
+    #[test]
+    fn writes_html_report_with_mcp_and_openclaw_focus_sections() {
+        let temp = tempdir().expect("tempdir should be created");
+        let output = temp.path().join("reports/scan.html");
+        let outcome = sample_openclaw_outcome_with_source_spans();
 
         write_scan_html(&output, &outcome).expect("html report should be written");
 
@@ -895,5 +955,44 @@ mod tests {
         assert!(html.contains("Capability Distribution"));
         assert!(html.contains("approval-gating"));
         assert!(html.contains("approval_policy is set to never"));
+    }
+
+    #[test]
+    fn writes_html_report_matches_http_golden_fixture() {
+        let temp = tempdir().expect("tempdir should be created");
+        let output = temp.path().join("reports/scan.html");
+
+        write_scan_html(&output, &sample_http_outcome()).expect("html report should be written");
+
+        let rendered = fs::read_to_string(&output).expect("html report should exist");
+        let golden = fs::read_to_string(fixture_path("scan_http.golden.html"))
+            .expect("golden HTML fixture should exist");
+        let normalized_rendered = normalize_generated_at_ms(&rendered);
+        let normalized_golden = normalize_generated_at_ms(&golden);
+
+        assert_eq!(normalized_rendered.trim_end(), normalized_golden.trim_end());
+    }
+
+    #[test]
+    fn writes_html_report_matches_openclaw_golden_fixture() {
+        let temp = tempdir().expect("tempdir should be created");
+        let output = temp.path().join("reports/scan.html");
+
+        write_scan_html(&output, &sample_openclaw_outcome_with_source_spans())
+            .expect("html report should be written");
+
+        let rendered = fs::read_to_string(&output).expect("html report should exist");
+        let golden = fs::read_to_string(fixture_path("scan_openclaw_structured.golden.html"))
+            .expect("golden HTML fixture should exist");
+
+        let normalized = normalize_generated_at_ms(&rendered);
+        let normalized_golden = normalize_generated_at_ms(&golden);
+        assert_eq!(normalized.trim_end(), normalized_golden.trim_end());
+        assert!(normalized.contains("src/agent.ts:42:9"));
+        assert!(normalized.contains("src/notify.ts:11"));
+        assert!(normalized.contains("structured-static"));
+        assert!(normalized.contains("MCP Security Findings"));
+        assert!(normalized.contains("Tool Misuse Findings"));
+        assert!(normalized.contains("Approval Bypass Findings"));
     }
 }

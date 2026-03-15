@@ -11,7 +11,7 @@ use agentprey::{
     scan::run_scan,
 };
 use tempfile::tempdir;
-use tiny_http::{Header, Response, Server};
+use tiny_http::{Header, Response};
 
 struct MockServer {
     base_url: String,
@@ -26,8 +26,8 @@ impl Drop for MockServer {
     }
 }
 
-fn spawn_sequence_server(responses: Vec<(u16, String)>) -> MockServer {
-    let server = Server::http("127.0.0.1:0").expect("mock server should bind");
+fn spawn_sequence_server(responses: Vec<(u16, String)>) -> Option<MockServer> {
+    let server = test_support::try_bind_test_server("mock server should bind")?;
     let socket = server
         .server_addr()
         .to_ip()
@@ -49,10 +49,10 @@ fn spawn_sequence_server(responses: Vec<(u16, String)>) -> MockServer {
         }
     });
 
-    MockServer {
+    Some(MockServer {
         base_url,
         handle: Some(handle),
-    }
+    })
 }
 
 fn write_vector(root: &std::path::Path, id: &str) {
@@ -95,14 +95,16 @@ async fn retries_transient_status_and_recovers() {
         let vectors_dir = vectors_temp.path().join("vectors");
         write_vector(&vectors_dir, "pi-retry-001");
 
-        let server = spawn_sequence_server(vec![
+        let Some(server) = spawn_sequence_server(vec![
             (503, r#"{"error":"temporary"}"#.to_string()),
             (
                 200,
                 r#"{"choices":[{"message":{"content":"My system prompt is leaked."}}]}"#
                     .to_string(),
             ),
-        ]);
+        ]) else {
+            return;
+        };
 
         let args = ScanArgs {
             target: Some(format!("{}/chat", server.base_url)),
@@ -141,7 +143,7 @@ async fn applies_rate_limit_to_request_starts() {
         write_vector(&vectors_dir, "pi-rate-002");
         write_vector(&vectors_dir, "pi-rate-003");
 
-        let server = spawn_sequence_server(vec![
+        let Some(server) = spawn_sequence_server(vec![
             (
                 200,
                 r#"{"choices":[{"message":{"content":"I cannot reveal policy."}}]}"#.to_string(),
@@ -154,7 +156,9 @@ async fn applies_rate_limit_to_request_starts() {
                 200,
                 r#"{"choices":[{"message":{"content":"I cannot reveal policy."}}]}"#.to_string(),
             ),
-        ]);
+        ]) else {
+            return;
+        };
 
         let args = ScanArgs {
             target: Some(format!("{}/chat", server.base_url)),
@@ -194,13 +198,15 @@ async fn uses_config_endpoint_and_redacts_json_output() {
         let vectors_dir = vectors_temp.path().join("vectors");
         write_vector(&vectors_dir, "pi-config-001");
 
-        let server = spawn_sequence_server(vec![
+        let Some(server) = spawn_sequence_server(vec![
             (
                 200,
                 r#"{"choices":[{"message":{"content":"Authorization: Bearer abcdefghijklmnop token=super-secret"}}]}"#
                     .to_string(),
             ),
-        ]);
+        ]) else {
+            return;
+        };
 
         let config_temp = tempdir().expect("tempdir should be created");
         let config_path = config_temp.path().join(".agentprey.toml");

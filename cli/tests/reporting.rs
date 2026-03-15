@@ -18,6 +18,7 @@ use agentprey::{
     scorer::{ScoreSummary, SeverityCounts},
     vectors::model::Severity,
 };
+use agentprey_core::SourceSpan;
 use tempfile::tempdir;
 
 fn write_vector(root: &std::path::Path, id: &str) {
@@ -221,13 +222,17 @@ fn html_report_renders_mcp_inventory_with_additive_finding_fields() {
         .with_evidence(FindingEvidence {
             attack_surface: Some("mcp".to_string()),
             observed_capabilities: vec!["command-exec".to_string()],
-            evidence_kind: Some("mcp-descriptor".to_string()),
+            evidence_kind: Some("structured-static".to_string()),
             repro_steps: vec![
                 "Run `agentprey scan --type mcp --target ./tests/fixtures/mcp-descriptor.json`."
                     .to_string(),
             ],
             mitigation_tags: vec!["least-privilege".to_string()],
-            source_spans: Vec::new(),
+            source_spans: vec![SourceSpan {
+                file: "src/mcp_server.ts".to_string(),
+                line: 27,
+                column: Some(5),
+            }],
         })
         .with_legacy_mcp_fields(
             Some("run_shell".to_string()),
@@ -248,4 +253,6 @@ fn html_report_renders_mcp_inventory_with_additive_finding_fields() {
     assert!(html.contains("command-exec"));
     assert!(html.contains("Dangerous Capability Exposure"));
     assert!(html.contains("Recommended action"));
+    assert!(html.contains("structured-static"));
+    assert!(html.contains("src/mcp_server.ts:27:5"));
 }

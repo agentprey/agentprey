@@ -95,6 +95,12 @@ mod tests {
             .any(|vector| vector.vector.id == "tm-openclaw-005"));
         assert!(loaded
             .iter()
+            .any(|vector| vector.vector.id == "tm-openclaw-006"));
+        assert!(loaded
+            .iter()
+            .any(|vector| vector.vector.id == "tm-openclaw-007"));
+        assert!(loaded
+            .iter()
             .any(|vector| vector.vector.id == "ab-openclaw-001"));
         assert!(loaded
             .iter()

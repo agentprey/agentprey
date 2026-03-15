@@ -64,6 +64,28 @@ export function executeCommand(input: string) {
 }
 "#,
     );
+    write_file(
+        root,
+        "src/writer.ts",
+        r#"
+import fs from "fs";
+
+export function persistAuditLog(contents: string) {
+  return fs.writeFile("audit.log", contents, () => undefined);
+}
+"#,
+    );
+    write_file(
+        root,
+        "src/egress.ts",
+        r#"
+import axios from "axios";
+
+export function sendAudit(payload: unknown) {
+  return axios.post("https://example.com/audit", payload);
+}
+"#,
+    );
 }
 
 fn write_safe_fixture(root: &std::path::Path) {
@@ -109,6 +131,29 @@ import subprocess
 def execute_safe(cmd):
     approval_required = True
     return subprocess.run(cmd, shell=True)
+"#,
+    );
+    write_file(
+        root,
+        "src/writer.ts",
+        r#"
+import fs from "fs";
+
+export function persistApprovedAuditLog(contents: string) {
+  const approval_required = true;
+  return fs.writeFile("audit.log", contents, () => undefined);
+}
+"#,
+    );
+    write_file(
+        root,
+        "src/egress.py",
+        r#"
+import requests
+
+def send_approved_audit(payload):
+    approval_required = True
+    return requests.post("https://example.com/audit", json=payload)
 "#,
     );
 }
@@ -296,6 +341,7 @@ async fn openclaw_scan_flags_risky_fixture_and_reduces_findings_for_safe_fixture
             .source_spans
             .iter()
             .any(|span| span.file == "src/agent.ts"));
+        assert!(!risky_structured_shell_exec.observed_capabilities.is_empty());
 
         let safe_structured_shell_exec = safe_outcome
             .findings
@@ -307,6 +353,70 @@ async fn openclaw_scan_flags_risky_fixture_and_reduces_findings_for_safe_fixture
             agentprey::scan::FindingStatus::Resistant
         ));
         assert!(safe_structured_shell_exec.source_spans.is_empty());
+
+        let risky_structured_filesystem_write = risky_outcome
+            .findings
+            .iter()
+            .find(|finding| finding.vector_id == "tm-openclaw-006")
+            .expect("risky fixture should trigger structured filesystem-write finding");
+        assert!(matches!(
+            risky_structured_filesystem_write.status,
+            agentprey::scan::FindingStatus::Vulnerable
+        ));
+        assert_eq!(
+            risky_structured_filesystem_write.evidence_kind.as_deref(),
+            Some("structured-static")
+        );
+        assert!(risky_structured_filesystem_write
+            .source_spans
+            .iter()
+            .any(|span| span.file == "src/writer.ts"));
+        assert!(!risky_structured_filesystem_write
+            .observed_capabilities
+            .is_empty());
+
+        let safe_structured_filesystem_write = safe_outcome
+            .findings
+            .iter()
+            .find(|finding| finding.vector_id == "tm-openclaw-006")
+            .expect("safe fixture should still include the structured filesystem-write result");
+        assert!(matches!(
+            safe_structured_filesystem_write.status,
+            agentprey::scan::FindingStatus::Resistant
+        ));
+        assert!(safe_structured_filesystem_write.source_spans.is_empty());
+
+        let risky_structured_network_egress = risky_outcome
+            .findings
+            .iter()
+            .find(|finding| finding.vector_id == "tm-openclaw-007")
+            .expect("risky fixture should trigger structured network-egress finding");
+        assert!(matches!(
+            risky_structured_network_egress.status,
+            agentprey::scan::FindingStatus::Vulnerable
+        ));
+        assert_eq!(
+            risky_structured_network_egress.evidence_kind.as_deref(),
+            Some("structured-static")
+        );
+        assert!(risky_structured_network_egress
+            .source_spans
+            .iter()
+            .any(|span| span.file == "src/egress.ts"));
+        assert!(!risky_structured_network_egress
+            .observed_capabilities
+            .is_empty());
+
+        let safe_structured_network_egress = safe_outcome
+            .findings
+            .iter()
+            .find(|finding| finding.vector_id == "tm-openclaw-007")
+            .expect("safe fixture should still include the structured network-egress result");
+        assert!(matches!(
+            safe_structured_network_egress.status,
+            agentprey::scan::FindingStatus::Resistant
+        ));
+        assert!(safe_structured_network_egress.source_spans.is_empty());
 
         let risky_prompt_approval_bypass = risky_outcome
             .findings

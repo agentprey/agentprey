@@ -22,16 +22,17 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: cli
+          workspaces: |
+            . -> target
 
       - name: Check formatting
-        run: cargo fmt --manifest-path cli/Cargo.toml --all --check
+        run: cargo fmt --all --check
 
       - name: Run clippy
-        run: cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run test suite
-        run: cargo test --manifest-path cli/Cargo.toml
+        run: cargo test --workspace
 
   smoke-tests:
     name: Smoke Tests
@@ -47,7 +48,8 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: cli
+          workspaces: |
+            . -> target
 
       - name: Run HTTP smoke test
         run: bash scripts/beta_smoke.sh

@@ -1,32 +1,41 @@
 [package]
 name = "agentprey"
 version = "0.5.0"
-edition = "2021"
+edition.workspace = true
 description = "Security testing scanner for AI agents"
-license = "MIT"
-repository = "https://github.com/agentprey/agentprey"
-homepage = "https://github.com/agentprey/agentprey"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 readme = "README.md"
 keywords = ["security", "ai", "cli", "prompt-injection", "testing"]
 categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
-anyhow = "1"
-clap = { version = "4", features = ["derive"] }
-colored = "2"
-console = "0.15"
-crossterm = "0.28"
-indicatif = "0.17"
-include_dir = "0.7"
-ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }
-regex = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-serde_yaml = "0.9"
-toml = "0.8"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+agentprey-analyzer = { path = "../crates/agentprey-analyzer" }
+agentprey-core = { path = "../crates/agentprey-core" }
+agentprey-report = { path = "../crates/agentprey-report" }
+agentprey-sandbox = { path = "../crates/agentprey-sandbox" }
+agentprey-vectors = { path = "../crates/agentprey-vectors" }
+anyhow.workspace = true
+clap.workspace = true
+colored.workspace = true
+console.workspace = true
+crossterm.workspace = true
+indicatif.workspace = true
+ratatui.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+toml.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
-tempfile = "3"
-tiny_http = "0.12"
+criterion.workspace = true
+tempfile.workspace = true
+tiny_http.workspace = true
+
+[[bench]]
+name = "foundations"
+harness = false

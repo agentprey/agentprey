@@ -4,9 +4,13 @@ use anyhow::{anyhow, Context, Result};
 use regex::Regex;
 
 use crate::{
-    analyzer::{analyze_response_for_vector, Verdict},
+    analyzer::{
+        analyze_openclaw_project, analyze_response_for_vector, StructuredFindingKind, Verdict,
+    },
     redaction::redact_text,
-    scan::{FindingOutcome, FindingOutcomeInput, FindingStatus, ResolvedScanSettings},
+    scan::{
+        FindingEvidence, FindingOutcome, FindingOutcomeInput, FindingStatus, ResolvedScanSettings,
+    },
     vectors::model::Vector,
 };
 
@@ -16,11 +20,13 @@ const SUPPORTED_EXTENSIONS: &[&str] = &[
 const MISSING_ANY_INDICATOR: &str = "missing_any";
 const SNIPPET_CONTEXT_BYTES: usize = 48;
 const MAX_EVIDENCE_LINES: usize = 3;
+const STRUCTURED_SHELL_EXEC_VECTOR_ID: &str = "tm-openclaw-005";
 
 #[derive(Debug, Clone)]
 pub struct OpenClawTarget {
     corpus: AuditCorpus,
     segments: Vec<CorpusSegment>,
+    structured_report: crate::analyzer::StructuredOpenClawReport,
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +75,7 @@ impl OpenClawTarget {
                 file_count: segments.len(),
             },
             segments,
+            structured_report: analyze_openclaw_project(&resolved_path),
         })
     }
 
@@ -112,6 +119,58 @@ impl OpenClawTarget {
         };
 
         let analysis = analyze_response_for_vector(&self.corpus.normalized_text, &vector.detection);
+        if vector.id == STRUCTURED_SHELL_EXEC_VECTOR_ID {
+            if let Some(structured_finding) = self
+                .structured_report
+                .finding(StructuredFindingKind::UnsafeShellExecution)
+            {
+                let evidence_summary = structured_finding
+                    .source_spans
+                    .iter()
+                    .map(format_source_span)
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                let response = format!(
+                    "structured openclaw analysis for '{}' on {} found unapproved shell execution at {}.",
+                    vector.name, self.corpus.display_target, evidence_summary
+                );
+
+                return FindingOutcome::new(FindingOutcomeInput {
+                    rule_id,
+                    vector_id,
+                    vector_name,
+                    category,
+                    subcategory,
+                    severity,
+                    payload_name: payload.name,
+                    payload_prompt: payload.prompt,
+                    status: FindingStatus::Vulnerable,
+                    status_code: None,
+                    response: maybe_redact(&response, settings.redact_responses),
+                    analysis: None,
+                    duration_ms: vector_started.elapsed().as_millis(),
+                    rationale,
+                    evidence_summary,
+                    recommendation,
+                })
+                .with_evidence(FindingEvidence {
+                    attack_surface: Some("local-shell-exec".to_string()),
+                    observed_capabilities: structured_finding.observed_capabilities.clone(),
+                    evidence_kind: Some("structured-static".to_string()),
+                    repro_steps: structured_finding
+                        .source_spans
+                        .iter()
+                        .map(|span| format!("Open {} at line {}", span.file, span.line))
+                        .collect(),
+                    mitigation_tags: vec![
+                        "approval-gating".to_string(),
+                        "least-privilege".to_string(),
+                    ],
+                    source_spans: structured_finding.source_spans.clone(),
+                });
+            }
+        }
+
         let status = match analysis.verdict {
             Verdict::Vulnerable => FindingStatus::Vulnerable,
             Verdict::Resistant => FindingStatus::Resistant,
@@ -378,4 +437,11 @@ fn vector_recommendation(vector: &Vector) -> String {
                 vector.name
             )
         })
+}
+
+fn format_source_span(span: &crate::analyzer::SourceSpan) -> String {
+    match span.column {
+        Some(column) => format!("{}:{}:{}", span.file, span.line, column),
+        None => format!("{}:{}", span.file, span.line),
+    }
 }

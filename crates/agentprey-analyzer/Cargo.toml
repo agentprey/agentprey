@@ -1,0 +1,17 @@
+[package]
+name = "agentprey-analyzer"
+version = "0.5.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+agentprey-core = { path = "../agentprey-core" }
+agentprey-vectors = { path = "../agentprey-vectors" }
+regex.workspace = true
+serde.workspace = true
+tempfile.workspace = true
+tree-sitter.workspace = true
+tree-sitter-python.workspace = true
+tree-sitter-typescript.workspace = true

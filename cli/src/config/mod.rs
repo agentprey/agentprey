@@ -10,9 +10,11 @@ use serde::Deserialize;
 use crate::cli::TargetType;
 
 pub const DEFAULT_PROJECT_CONFIG_FILE: &str = ".agentprey.toml";
+pub const PROJECT_CONFIG_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ProjectConfig {
+    pub schema_version: Option<u32>,
     #[serde(default)]
     pub target: TargetConfig,
     #[serde(default)]
@@ -62,8 +64,10 @@ pub fn load_project_config(path: &PathBuf) -> Result<ProjectConfig> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("failed to read config file '{}'", path.display()))?;
 
-    toml::from_str::<ProjectConfig>(&content)
-        .with_context(|| format!("failed to parse TOML config '{}'", path.display()))
+    let config = toml::from_str::<ProjectConfig>(&content)
+        .with_context(|| format!("failed to parse TOML config '{}'", path.display()))?;
+    validate_schema_version(path, &config)?;
+    Ok(config)
 }
 
 pub fn write_default_config(path: &Path, force: bool) -> Result<()> {
@@ -88,7 +92,9 @@ pub fn write_default_config(path: &Path, force: bool) -> Result<()> {
     Ok(())
 }
 
-pub const DEFAULT_CONFIG_TEMPLATE: &str = r#"[target]
+pub const DEFAULT_CONFIG_TEMPLATE: &str = r#"schema_version = 1
+
+[target]
 # Optional target type: http | openclaw | mcp
 # type = "http"
 
@@ -126,6 +132,22 @@ redact_responses = true
 # api_url = "https://PLACEHOLDER.convex.site"
 "#;
 
+fn validate_schema_version(path: &Path, config: &ProjectConfig) -> Result<()> {
+    let schema_version = config
+        .schema_version
+        .unwrap_or(PROJECT_CONFIG_SCHEMA_VERSION);
+    if schema_version != PROJECT_CONFIG_SCHEMA_VERSION {
+        return Err(anyhow!(
+            "unsupported config schema_version '{}' in '{}'; expected '{}'",
+            schema_version,
+            path.display(),
+            PROJECT_CONFIG_SCHEMA_VERSION
+        ));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -134,7 +156,10 @@ mod tests {
 
     use crate::{
         cli::TargetType,
-        config::{load_project_config, write_default_config, DEFAULT_CONFIG_TEMPLATE},
+        config::{
+            load_project_config, write_default_config, DEFAULT_CONFIG_TEMPLATE,
+            PROJECT_CONFIG_SCHEMA_VERSION,
+        },
     };
 
     #[test]
@@ -174,6 +199,7 @@ api_url = "https://custom-auth.example"
         .expect("config fixture should be written");
 
         let parsed = load_project_config(&config_path).expect("config should parse");
+        assert_eq!(parsed.schema_version, None);
         assert!(matches!(
             parsed.target.target_type,
             Some(TargetType::Openclaw)
@@ -240,6 +266,7 @@ api_url = "https://custom-auth.example"
 
         let contents = fs::read_to_string(&config_path).expect("config file should exist");
         assert_eq!(contents, DEFAULT_CONFIG_TEMPLATE);
+        assert!(contents.contains("schema_version = 1"));
     }
 
     #[test]
@@ -250,5 +277,24 @@ api_url = "https://custom-auth.example"
         fs::write(&config_path, "[target]\nendpoint = 'one'").expect("fixture should exist");
         let error = write_default_config(&config_path, false).expect_err("should fail");
         assert!(error.to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn rejects_unknown_schema_version() {
+        let temp = tempdir().expect("tempdir should be created");
+        let config_path = temp.path().join(".agentprey.toml");
+        fs::write(
+            &config_path,
+            "schema_version = 2\n[target]\nendpoint = 'one'\n",
+        )
+        .expect("config fixture should be written");
+
+        let error = load_project_config(&config_path).expect_err("schema version should fail");
+        assert!(error
+            .to_string()
+            .contains("unsupported config schema_version '2'"));
+        assert!(error
+            .to_string()
+            .contains(&PROJECT_CONFIG_SCHEMA_VERSION.to_string()));
     }
 }

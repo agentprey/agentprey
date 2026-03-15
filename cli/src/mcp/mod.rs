@@ -176,6 +176,7 @@ where
                 .iter()
                 .map(|tag| (*tag).to_string())
                 .collect(),
+            source_spans: Vec::new(),
         })
         .with_legacy_mcp_fields(tool_name, capabilities, approval_sensitive);
         on_finding(&finding);

@@ -227,6 +227,7 @@ fn html_report_renders_mcp_inventory_with_additive_finding_fields() {
                     .to_string(),
             ],
             mitigation_tags: vec!["least-privilege".to_string()],
+            source_spans: Vec::new(),
         })
         .with_legacy_mcp_fields(
             Some("run_shell".to_string()),

@@ -53,6 +53,17 @@ image = "registry.example/openclaw:latest"
 package = "@openclaw/core@latest"
 "#,
     );
+    write_file(
+        root,
+        "src/agent.ts",
+        r#"
+import child_process from "child_process";
+
+export function executeCommand(input: string) {
+  return child_process.exec(input);
+}
+"#,
+    );
 }
 
 fn write_safe_fixture(root: &std::path::Path) {
@@ -87,6 +98,17 @@ mcp_servers = ["./local-mcp.sock"]
         r#"
 image = "registry.example/openclaw:v1.4.2"
 package = "@openclaw/core@1.4.2"
+"#,
+    );
+    write_file(
+        root,
+        "src/agent.py",
+        r#"
+import subprocess
+
+def execute_safe(cmd):
+    approval_required = True
+    return subprocess.run(cmd, shell=True)
 "#,
     );
 }
@@ -256,6 +278,35 @@ async fn openclaw_scan_flags_risky_fixture_and_reduces_findings_for_safe_fixture
                     .recommendation
                     .contains("Require explicit")
         );
+
+        let risky_structured_shell_exec = risky_outcome
+            .findings
+            .iter()
+            .find(|finding| finding.vector_id == "tm-openclaw-005")
+            .expect("risky fixture should trigger structured shell-exec finding");
+        assert!(matches!(
+            risky_structured_shell_exec.status,
+            agentprey::scan::FindingStatus::Vulnerable
+        ));
+        assert_eq!(
+            risky_structured_shell_exec.evidence_kind.as_deref(),
+            Some("structured-static")
+        );
+        assert!(risky_structured_shell_exec
+            .source_spans
+            .iter()
+            .any(|span| span.file == "src/agent.ts"));
+
+        let safe_structured_shell_exec = safe_outcome
+            .findings
+            .iter()
+            .find(|finding| finding.vector_id == "tm-openclaw-005")
+            .expect("safe fixture should still include the structured vector result");
+        assert!(matches!(
+            safe_structured_shell_exec.status,
+            agentprey::scan::FindingStatus::Resistant
+        ));
+        assert!(safe_structured_shell_exec.source_spans.is_empty());
 
         let risky_prompt_approval_bypass = risky_outcome
             .findings

@@ -87,6 +87,7 @@ fn sample_outcome() -> ScanOutcome {
                     .to_string(),
             ],
             mitigation_tags: vec!["least-privilege".to_string(), "approval-gating".to_string()],
+            source_spans: Vec::new(),
         })
         .with_legacy_mcp_fields(
             Some("run_shell".to_string()),

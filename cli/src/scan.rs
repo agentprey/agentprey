@@ -6,8 +6,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub use agentprey_core::{
+    FindingEvidence, FindingOutcome, FindingOutcomeInput, FindingStatus, ScanOutcome,
+};
 use anyhow::{anyhow, Context, Result};
-use serde::Serialize;
 use tokio::{
     sync::{Mutex, Semaphore},
     task::JoinSet,
@@ -15,13 +17,11 @@ use tokio::{
 };
 
 use crate::{
-    analyzer::Analysis,
     auth,
     cli::{ScanArgs, TargetType},
     config::{load_project_config, ProjectConfig, DEFAULT_PROJECT_CONFIG_FILE},
-    http_target,
-    mcp::{self, model::McpScanMetadata},
-    scorer::{score_findings, ScoreSummary},
+    http_target, mcp,
+    scorer::score_findings,
     targets::ResolvedTarget,
     vectors::{
         loader::{load_vectors, load_vectors_from_dir, LoadedVector},
@@ -40,93 +40,6 @@ pub const OPENCLAW_VECTOR_CATEGORY: &str = "openclaw";
 pub const TOOL_MISUSE_VECTOR_CATEGORY: &str = "tool-misuse";
 pub const APPROVAL_BYPASS_VECTOR_CATEGORY: &str = "approval-bypass";
 pub const MCP_VECTOR_CATEGORY: &str = mcp::MCP_VECTOR_CATEGORY;
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ScanOutcome {
-    pub target_type: TargetType,
-    pub target: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mcp: Option<McpScanMetadata>,
-    pub total_vectors: usize,
-    pub vulnerable_count: usize,
-    pub resistant_count: usize,
-    pub error_count: usize,
-    pub score: ScoreSummary,
-    pub findings: Vec<FindingOutcome>,
-    pub duration_ms: u128,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct FindingOutcome {
-    pub rule_id: String,
-    pub vector_id: String,
-    pub vector_name: String,
-    pub category: String,
-    pub subcategory: String,
-    pub severity: Severity,
-    pub payload_name: String,
-    pub payload_prompt: String,
-    pub status: FindingStatus,
-    pub status_code: Option<u16>,
-    pub response: String,
-    pub analysis: Option<Analysis>,
-    pub duration_ms: u128,
-    pub rationale: String,
-    pub evidence_summary: String,
-    pub recommendation: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub attack_surface: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub observed_capabilities: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub evidence_kind: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub repro_steps: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub mitigation_tags: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_name: Option<String>,
-    #[serde(default)]
-    pub capabilities: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub approval_sensitive: Option<bool>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct FindingEvidence {
-    pub attack_surface: Option<String>,
-    pub observed_capabilities: Vec<String>,
-    pub evidence_kind: Option<String>,
-    pub repro_steps: Vec<String>,
-    pub mitigation_tags: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct FindingOutcomeInput {
-    pub rule_id: String,
-    pub vector_id: String,
-    pub vector_name: String,
-    pub category: String,
-    pub subcategory: String,
-    pub severity: Severity,
-    pub payload_name: String,
-    pub payload_prompt: String,
-    pub status: FindingStatus,
-    pub status_code: Option<u16>,
-    pub response: String,
-    pub analysis: Option<Analysis>,
-    pub duration_ms: u128,
-    pub rationale: String,
-    pub evidence_summary: String,
-    pub recommendation: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub enum FindingStatus {
-    Vulnerable,
-    Resistant,
-    Error,
-}
 
 #[derive(Debug, Clone)]
 pub struct HttpScanSettings {
@@ -176,64 +89,6 @@ pub struct ScanSettingsInput {
 enum ConfigLookup {
     ExplicitOnly,
     ExplicitOrDefaultPath,
-}
-
-impl ScanOutcome {
-    pub fn has_vulnerabilities(&self) -> bool {
-        self.vulnerable_count > 0
-    }
-}
-
-impl FindingOutcome {
-    pub fn new(input: FindingOutcomeInput) -> Self {
-        Self {
-            rule_id: input.rule_id,
-            vector_id: input.vector_id,
-            vector_name: input.vector_name,
-            category: input.category,
-            subcategory: input.subcategory,
-            severity: input.severity,
-            payload_name: input.payload_name,
-            payload_prompt: input.payload_prompt,
-            status: input.status,
-            status_code: input.status_code,
-            response: input.response,
-            analysis: input.analysis,
-            duration_ms: input.duration_ms,
-            rationale: input.rationale,
-            evidence_summary: input.evidence_summary,
-            recommendation: input.recommendation,
-            attack_surface: None,
-            observed_capabilities: Vec::new(),
-            evidence_kind: None,
-            repro_steps: Vec::new(),
-            mitigation_tags: Vec::new(),
-            tool_name: None,
-            capabilities: Vec::new(),
-            approval_sensitive: None,
-        }
-    }
-
-    pub fn with_evidence(mut self, evidence: FindingEvidence) -> Self {
-        self.attack_surface = evidence.attack_surface;
-        self.observed_capabilities = evidence.observed_capabilities;
-        self.evidence_kind = evidence.evidence_kind;
-        self.repro_steps = evidence.repro_steps;
-        self.mitigation_tags = evidence.mitigation_tags;
-        self
-    }
-
-    pub fn with_legacy_mcp_fields(
-        mut self,
-        tool_name: Option<String>,
-        capabilities: Vec<String>,
-        approval_sensitive: Option<bool>,
-    ) -> Self {
-        self.tool_name = tool_name;
-        self.capabilities = capabilities;
-        self.approval_sensitive = approval_sensitive;
-        self
-    }
 }
 
 pub fn resolve_scan_settings(args: &ScanArgs) -> Result<ResolvedScanSettings> {

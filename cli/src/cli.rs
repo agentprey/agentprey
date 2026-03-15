@@ -1,5 +1,6 @@
+pub use agentprey_core::TargetType;
+
 use clap::{ArgAction, Args, Parser, Subcommand};
-use std::fmt;
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -52,26 +53,6 @@ pub struct InitArgs {
     /// Overwrite an existing config file
     #[arg(long)]
     pub force: bool,
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, serde::Deserialize, serde::Serialize,
-)]
-#[serde(rename_all = "lowercase")]
-pub enum TargetType {
-    Http,
-    Openclaw,
-    Mcp,
-}
-
-impl fmt::Display for TargetType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Http => f.write_str("http"),
-            Self::Openclaw => f.write_str("openclaw"),
-            Self::Mcp => f.write_str("mcp"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]

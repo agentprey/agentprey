@@ -74,10 +74,10 @@ Option D: build from source.
 ```bash
 git clone https://github.com/agentprey/agentprey.git
 cd agentprey
-cargo build --manifest-path cli/Cargo.toml --release
-./cli/target/release/agentprey --help
-./cli/target/release/agentprey scan --help
-./cli/target/release/agentprey init
+cargo build --release -p agentprey
+./target/release/agentprey --help
+./target/release/agentprey scan --help
+./target/release/agentprey init
 ```
 
 ## Quickstart

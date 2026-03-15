@@ -55,6 +55,7 @@ The following additive evidence fields may appear on findings without changing
 - `evidence_kind`
 - `repro_steps`
 - `mitigation_tags`
+- `source_spans`
 
 ## Compatibility
 

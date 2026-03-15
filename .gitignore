@@ -1,3 +1,4 @@
 cli/target/
+target/
 *.log
 pro-vectors/

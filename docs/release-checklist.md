@@ -4,9 +4,9 @@ Use this checklist before publishing any beta tag or calling a release candidate
 
 ## Automated verification
 
-- [ ] `cargo fmt --manifest-path cli/Cargo.toml --all --check`
-- [ ] `cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings`
-- [ ] `cargo test --manifest-path cli/Cargo.toml`
+- [ ] `cargo fmt --all --check`
+- [ ] `cargo clippy --workspace --all-targets -- -D warnings`
+- [ ] `cargo test --workspace`
 - [ ] `bash scripts/beta_smoke.sh`
 - [ ] `bash scripts/openclaw_smoke.sh`
 - [ ] `bash scripts/release_candidate_smoke.sh`
@@ -43,7 +43,7 @@ Use this checklist before publishing any beta tag or calling a release candidate
 
 ## Crates.io rollout
 
-- [ ] Bump version in `cli/Cargo.toml`
+- [ ] Bump version in `cli/Cargo.toml` and any extracted workspace crates that will publish
 - [ ] Update `CHANGELOG.md`
 - [ ] Run `Publish Crate` workflow with `dry_run=true`
 - [ ] Re-run `Publish Crate` workflow with `dry_run=false` after approval

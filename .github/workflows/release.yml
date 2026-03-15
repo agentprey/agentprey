@@ -43,17 +43,18 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: cli
+          workspaces: |
+            . -> target
 
       - name: Build release binary
-        run: cargo build --manifest-path cli/Cargo.toml --release --target ${{ matrix.target }}
+        run: cargo build --release -p agentprey --target ${{ matrix.target }}
 
       - name: Package archive (Unix)
         if: runner.os != 'Windows'
         run: |
           package_dir="dist/agentprey-${{ matrix.target }}"
           mkdir -p "$package_dir/scripts"
-          cp "cli/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "$package_dir/${{ matrix.binary_name }}"
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "$package_dir/${{ matrix.binary_name }}"
           cp -R vectors "$package_dir/vectors"
           cp README.md "$package_dir/README.md"
           cp CHANGELOG.md "$package_dir/CHANGELOG.md"
@@ -69,7 +70,7 @@ jobs:
         run: |
           $packageDir = "dist/agentprey-${{ matrix.target }}"
           New-Item -ItemType Directory -Path "$packageDir/scripts" -Force | Out-Null
-          Copy-Item "cli/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "$packageDir/${{ matrix.binary_name }}"
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "$packageDir/${{ matrix.binary_name }}"
           Copy-Item "vectors" "$packageDir/vectors" -Recurse
           Copy-Item "README.md" "$packageDir/README.md"
           Copy-Item "CHANGELOG.md" "$packageDir/CHANGELOG.md"

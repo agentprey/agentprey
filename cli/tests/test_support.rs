@@ -1,6 +1,7 @@
 use std::{env, future::Future, path::PathBuf, sync::LazyLock};
 
 use tempfile::tempdir;
+use tiny_http::Server;
 use tokio::sync::Mutex;
 
 static ENV_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -33,4 +34,18 @@ where
     let _guard = EnvGuard { previous };
 
     run(agentprey_home).await
+}
+
+#[allow(dead_code)]
+pub fn try_bind_test_server(context: &str) -> Option<Server> {
+    match Server::http("127.0.0.1:0") {
+        Ok(server) => Some(server),
+        Err(error) if error.to_string().contains("Operation not permitted") => {
+            eprintln!(
+                "skipping {context}: local test server bind not permitted in this environment"
+            );
+            None
+        }
+        Err(error) => panic!("{context}: {error}"),
+    }
 }

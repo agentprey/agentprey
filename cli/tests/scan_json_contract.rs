@@ -8,6 +8,7 @@ use agentprey::{
     scorer::{Grade, ScoreSummary, SeverityCounts},
     vectors::model::Severity,
 };
+use agentprey_core::SourceSpan;
 use serde_json::Value;
 
 fn sample_outcome() -> ScanOutcome {
@@ -81,13 +82,17 @@ fn sample_outcome() -> ScanOutcome {
         .with_evidence(FindingEvidence {
             attack_surface: Some("mcp".to_string()),
             observed_capabilities: vec!["command-exec".to_string()],
-            evidence_kind: Some("mcp-descriptor".to_string()),
+            evidence_kind: Some("structured-static".to_string()),
             repro_steps: vec![
                 "Run `agentprey scan --type mcp --target ./tests/fixtures/mcp-descriptor.json`."
                     .to_string(),
             ],
             mitigation_tags: vec!["least-privilege".to_string(), "approval-gating".to_string()],
-            source_spans: Vec::new(),
+            source_spans: vec![SourceSpan {
+                file: "src/mcp_server.ts".to_string(),
+                line: 27,
+                column: Some(5),
+            }],
         })
         .with_legacy_mcp_fields(
             Some("run_shell".to_string()),
@@ -150,7 +155,10 @@ fn scan_json_contract_keeps_required_fields_for_downstream_consumers() {
         finding["observed_capabilities"],
         serde_json::json!(["command-exec"])
     );
-    assert_eq!(finding["evidence_kind"], "mcp-descriptor");
+    assert_eq!(finding["evidence_kind"], "structured-static");
+    assert_eq!(finding["source_spans"][0]["file"], "src/mcp_server.ts");
+    assert_eq!(finding["source_spans"][0]["line"], 27);
+    assert_eq!(finding["source_spans"][0]["column"], 5);
     assert_eq!(
         finding["repro_steps"],
         serde_json::json!([

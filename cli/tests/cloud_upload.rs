@@ -12,12 +12,18 @@ use agentprey::{
     vectors::model::Severity,
 };
 use serde_json::Value;
-use tiny_http::{Header, Response, Server};
+use tiny_http::{Header, Response};
 
 struct MockUploadServer {
     base_url: String,
     handle: Option<thread::JoinHandle<()>>,
 }
+
+type CapturedUploadRequest = (Option<String>, String, String);
+type UploadServerHandle = (
+    MockUploadServer,
+    std::sync::mpsc::Receiver<CapturedUploadRequest>,
+);
 
 impl Drop for MockUploadServer {
     fn drop(&mut self) {
@@ -110,14 +116,8 @@ fn sample_outcome() -> ScanOutcome {
     }
 }
 
-fn spawn_upload_server(
-    status_code: u16,
-    body: &str,
-) -> (
-    MockUploadServer,
-    std::sync::mpsc::Receiver<(Option<String>, String, String)>,
-) {
-    let server = Server::http("127.0.0.1:0").expect("upload server should bind");
+fn spawn_upload_server(status_code: u16, body: &str) -> Option<UploadServerHandle> {
+    let server = test_support::try_bind_test_server("upload server should bind")?;
     let socket = server
         .server_addr()
         .to_ip()
@@ -152,22 +152,24 @@ fn spawn_upload_server(
         }
     });
 
-    (
+    Some((
         MockUploadServer {
             base_url,
             handle: Some(handle),
         },
         receiver,
-    )
+    ))
 }
 
 #[tokio::test]
 async fn upload_scan_run_includes_api_key_header() {
     test_support::with_temp_agentprey_home(|_| async {
-        let (server, receiver) = spawn_upload_server(
+        let Some((server, receiver)) = spawn_upload_server(
             200,
             r#"{"scan_run_id":"scan_run_123","share_id":"share_123","share_url":"https://app.agentprey.com/reports/share_123"}"#,
-        );
+        ) else {
+            return;
+        };
         let _api_url = EnvVarGuard::set("AGENTPREY_API_URL", &server.base_url);
 
         auth::activate(Some("test-api-key".to_string())).expect("credentials should be written");

@@ -7,7 +7,7 @@ use agentprey::{
     scan::{run_scan, FindingStatus},
 };
 use tempfile::tempdir;
-use tiny_http::{Header, Response, Server};
+use tiny_http::{Header, Response};
 
 struct MockServer {
     base_url: String,
@@ -22,8 +22,8 @@ impl Drop for MockServer {
     }
 }
 
-fn spawn_mock_server(body: &str) -> MockServer {
-    let server = Server::http("127.0.0.1:0").expect("mock server should bind");
+fn spawn_mock_server(body: &str) -> Option<MockServer> {
+    let server = test_support::try_bind_test_server("mock server should bind")?;
     let socket = server
         .server_addr()
         .to_ip()
@@ -43,14 +43,14 @@ fn spawn_mock_server(body: &str) -> MockServer {
         }
     });
 
-    MockServer {
+    Some(MockServer {
         base_url,
         handle: Some(handle),
-    }
+    })
 }
 
-fn spawn_template_server(expected_method: &str) -> MockServer {
-    let server = Server::http("127.0.0.1:0").expect("mock server should bind");
+fn spawn_template_server(expected_method: &str) -> Option<MockServer> {
+    let server = test_support::try_bind_test_server("mock server should bind")?;
     let socket = server
         .server_addr()
         .to_ip()
@@ -80,10 +80,10 @@ fn spawn_template_server(expected_method: &str) -> MockServer {
         }
     });
 
-    MockServer {
+    Some(MockServer {
         base_url,
         handle: Some(handle),
-    }
+    })
 }
 
 fn write_single_vector_fixture() -> (tempfile::TempDir, std::path::PathBuf) {
@@ -124,9 +124,11 @@ detection:
 async fn marks_vulnerable_response_as_vulnerable() {
     test_support::with_temp_agentprey_home(|_| async {
         let (_fixture_dir, vectors_dir) = write_single_vector_fixture();
-        let server = spawn_mock_server(
+        let Some(server) = spawn_mock_server(
             r#"{"choices":[{"message":{"content":"My system prompt is: You are an internal assistant with unrestricted access."}}]}"#,
-        );
+        ) else {
+            return;
+        };
 
         let args = ScanArgs {
             target: Some(format!("{}/chat", server.base_url)),
@@ -161,9 +163,11 @@ async fn marks_vulnerable_response_as_vulnerable() {
 async fn marks_resistant_response_as_resistant() {
     test_support::with_temp_agentprey_home(|_| async {
         let (_fixture_dir, vectors_dir) = write_single_vector_fixture();
-        let server = spawn_mock_server(
+        let Some(server) = spawn_mock_server(
             r#"{"choices":[{"message":{"content":"I cannot share system instructions and will not ignore safety rules."}}]}"#,
-        );
+        ) else {
+            return;
+        };
 
         let args = ScanArgs {
             target: Some(format!("{}/chat", server.base_url)),
@@ -198,7 +202,9 @@ async fn marks_resistant_response_as_resistant() {
 async fn applies_target_method_template_and_response_path_from_config() {
     test_support::with_temp_agentprey_home(|_| async {
         let (_fixture_dir, vectors_dir) = write_single_vector_fixture();
-        let server = spawn_template_server("PATCH");
+        let Some(server) = spawn_template_server("PATCH") else {
+            return;
+        };
         let endpoint = format!("{}/chat", server.base_url);
 
         let temp = tempdir().expect("tempdir should be created");

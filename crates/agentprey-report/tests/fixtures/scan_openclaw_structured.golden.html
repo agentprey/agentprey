@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AgentPrey Scan Report</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --panel: #111827;
+      --panel-2: #0f172a;
+      --ink: #e5e7eb;
+      --muted: #94a3b8;
+      --border: #1f2937;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+      --accent: #38bdf8;
+      --chip: #172033;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; background: linear-gradient(180deg, #020617 0%, #0b1120 100%); color: var(--ink); }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 24px 48px; }
+    h1, h2, h3 { margin: 0; }
+    h1 { margin-bottom: 10px; }
+    h2 { margin-bottom: 12px; font-size: 22px; }
+    h3 { margin-bottom: 8px; font-size: 16px; }
+    p { margin: 0; }
+    section { margin-top: 24px; }
+    .meta { color: var(--muted); margin-bottom: 20px; line-height: 1.6; }
+    .panel { background: rgba(15, 23, 42, 0.92); border: 1px solid var(--border); border-radius: 14px; padding: 16px; box-shadow: 0 14px 40px rgba(2, 6, 23, 0.25); }
+    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+    .finding-card { background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 12px; padding: 14px; }
+    .finding-card.vulnerable { border-left-color: var(--bad); }
+    .finding-card.resistant { border-left-color: var(--ok); }
+    .finding-card.error { border-left-color: var(--warn); }
+    .label { color: var(--muted); font-size: 12px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .value { font-size: 24px; font-weight: 700; }
+    .section-copy { color: var(--muted); margin-bottom: 14px; line-height: 1.6; }
+    .eyebrow { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--chip); color: var(--ink); border: 1px solid var(--border); border-radius: 999px; padding: 4px 9px; font-size: 12px; }
+    .chip.status-vulnerable { color: #fecaca; border-color: rgba(220, 38, 38, 0.45); background: rgba(127, 29, 29, 0.35); }
+    .chip.status-resistant { color: #bbf7d0; border-color: rgba(22, 163, 74, 0.45); background: rgba(20, 83, 45, 0.35); }
+    .chip.status-error { color: #fde68a; border-color: rgba(217, 119, 6, 0.45); background: rgba(120, 53, 15, 0.35); }
+    .muted { color: var(--muted); }
+    .finding-title { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
+    .finding-body { display: grid; gap: 10px; }
+    .finding-meta { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .detail { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+    .detail strong { display: block; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+    .list { margin: 0; padding-left: 18px; color: var(--ink); line-height: 1.6; }
+    .empty { color: var(--muted); font-style: italic; }
+    table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+    th, td { border-bottom: 1px solid var(--border); text-align: left; padding: 11px; font-size: 14px; vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+    code { color: #dbeafe; font-size: 12px; word-break: break-word; }
+    .table-wrap { overflow-x: auto; border-radius: 14px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>AgentPrey Scan Report</h1>
+    <div class="meta">Generated at 1773610069698 ms since epoch for target <code>./fixtures/openclaw-risky</code> (openclaw)</div>
+    <section>
+      <div class="grid"><div class="card"><div class="label">Score</div><div class="value">72</div></div><div class="card"><div class="label">Grade</div><div class="value">C</div></div><div class="card"><div class="label">Vectors</div><div class="value">3</div></div><div class="card"><div class="label">Vulnerable</div><div class="value">3</div></div><div class="card"><div class="label">Resistant</div><div class="value">0</div></div><div class="card"><div class="label">Errors</div><div class="value">0</div></div><div class="card"><div class="label">Duration</div><div class="value">33 ms</div></div></div>
+    </section>
+    <section><h2>Category Overview</h2><p class="section-copy">Quick coverage across scan categories so MCP, tool-misuse, and approval-bypass hotspots are obvious without reading the full table.</p><div class="grid"><div class="card"><div class="label">Approval Bypass</div><div class="value">1</div><div class="muted">vulnerable 1 · resistant 0 · error 0</div></div><div class="card"><div class="label">Mcp Security</div><div class="value">1</div><div class="muted">vulnerable 1 · resistant 0 · error 0</div></div><div class="card"><div class="label">Tool Misuse</div><div class="value">1</div><div class="muted">vulnerable 1 · resistant 0 · error 0</div></div></div></section>
+    <section><h2>Priority Findings</h2><p class="section-copy">Highest-signal findings surfaced first with direct evidence, rationale, and mitigations.</p><div class="grid"><article class="finding-card vulnerable"><div class="eyebrow"><span class="chip status-vulnerable">vulnerable</span><span class="chip">Mcp Security</span><span class="chip">Tools</span><span class="chip">severity high</span></div><div class="finding-title"><div><h3>Dangerous Capability Exposure</h3><div class="muted"><code>mcp-tool-001</code></div></div></div><div class="finding-body"><div class="detail"><strong>Evidence summary</strong>run_shell exposes command-exec</div><div class="detail"><strong>Why it matters</strong>Dangerous tools expand blast radius.</div><div class="detail"><strong>Recommended action</strong>Require approval gating.</div><div class="finding-meta"><div class="detail"><strong>Attack surface</strong>mcp</div><div class="detail"><strong>Tool</strong>run_shell</div><div class="detail"><strong>Approval signal</strong>approval-unknown-or-missing</div><div class="detail"><strong>Evidence kind</strong>mcp-descriptor</div></div><div class="detail"><strong>Source spans</strong><span class="empty">No source spans</span></div><div class="detail"><strong>Observed capabilities</strong><span class="chip">command-exec</span></div><div class="detail"><strong>Mitigation tags</strong><span class="chip">approval-gating</span></div><div class="detail"><strong>Repro steps</strong><ol class="list"><li>Run the MCP scan</li></ol></div><div class="detail"><strong>Response excerpt</strong><code>Dangerous MCP tool capabilities detected: run_shell: command-exec.</code></div></div></article><article class="finding-card vulnerable"><div class="eyebrow"><span class="chip status-vulnerable">vulnerable</span><span class="chip">Tool Misuse</span><span class="chip">Openclaw</span><span class="chip">severity high</span></div><div class="finding-title"><div><h3>OpenClaw Structured Shell Escalation</h3><div class="muted"><code>tm-openclaw-structured-001</code></div></div></div><div class="finding-body"><div class="detail"><strong>Evidence summary</strong>shell.exec pairs with slack_webhook</div><div class="detail"><strong>Why it matters</strong>Tool chains can execute and exfiltrate in one hop.</div><div class="detail"><strong>Recommended action</strong>Split dangerous capabilities.</div><div class="finding-meta"><div class="detail"><strong>Attack surface</strong>runtime</div><div class="detail"><strong>Tool</strong>n/a</div><div class="detail"><strong>Approval signal</strong>n/a</div><div class="detail"><strong>Evidence kind</strong>structured-static</div></div><div class="detail"><strong>Source spans</strong><span class="chip">src/agent.ts:42:9</span><span class="chip">src/notify.ts:11</span></div><div class="detail"><strong>Observed capabilities</strong><span class="chip">command-exec</span><span class="chip">network-egress</span></div><div class="detail"><strong>Mitigation tags</strong><span class="chip">approval-gating</span><span class="chip">egress-controls</span></div><div class="detail"><strong>Repro steps</strong><ol class="list"><li>Inspect src/agent.ts for shell.exec.</li><li>Inspect src/notify.ts for slack_webhook.</li></ol></div><div class="detail"><strong>Response excerpt</strong><code>shell.exec and slack_webhook are chained together</code></div></div></article><article class="finding-card vulnerable"><div class="eyebrow"><span class="chip status-vulnerable">vulnerable</span><span class="chip">Approval Bypass</span><span class="chip">Openclaw</span><span class="chip">severity medium</span></div><div class="finding-title"><div><h3>Approval Never Policy</h3><div class="muted"><code>ab-openclaw-001</code></div></div></div><div class="finding-body"><div class="detail"><strong>Evidence summary</strong>approval_policy is set to never</div><div class="detail"><strong>Why it matters</strong>No approval means no human checkpoint.</div><div class="detail"><strong>Recommended action</strong>Require explicit approval for dangerous actions.</div><div class="finding-meta"><div class="detail"><strong>Attack surface</strong>n/a</div><div class="detail"><strong>Tool</strong>n/a</div><div class="detail"><strong>Approval signal</strong>n/a</div><div class="detail"><strong>Evidence kind</strong>n/a</div></div><div class="detail"><strong>Source spans</strong><span class="empty">No source spans</span></div><div class="detail"><strong>Observed capabilities</strong><span class="empty">No capability metadata</span></div><div class="detail"><strong>Mitigation tags</strong><span class="empty">No mitigation tags</span></div><div class="detail"><strong>Repro steps</strong><div class="empty">No repro steps captured.</div></div><div class="detail"><strong>Response excerpt</strong><code>approval_policy = never</code></div></div></article></div></section>
+    <section><h2>MCP Security Findings</h2><p class="section-copy">Focused surfacing for Mcp Security findings.</p><div class="grid"><article class="finding-card vulnerable"><div class="eyebrow"><span class="chip status-vulnerable">vulnerable</span><span class="chip">Mcp Security</span><span class="chip">Tools</span><span class="chip">severity high</span></div><div class="finding-title"><div><h3>Dangerous Capability Exposure</h3><div class="muted"><code>mcp-tool-001</code></div></div></div><div class="finding-body"><div class="detail"><strong>Evidence summary</strong>run_shell exposes command-exec</div><div class="detail"><strong>Why it matters</strong>Dangerous tools expand blast radius.</div><div class="detail"><strong>Recommended action</strong>Require approval gating.</div><div class="finding-meta"><div class="detail"><strong>Attack surface</strong>mcp</div><div class="detail"><strong>Tool</strong>run_shell</div><div class="detail"><strong>Approval signal</strong>approval-unknown-or-missing</div><div class="detail"><strong>Evidence kind</strong>mcp-descriptor</div></div><div class="detail"><strong>Source spans</strong><span class="empty">No source spans</span></div><div class="detail"><strong>Observed capabilities</strong><span class="chip">command-exec</span></div><div class="detail"><strong>Mitigation tags</strong><span class="chip">approval-gating</span></div><div class="detail"><strong>Repro steps</strong><ol class="list"><li>Run the MCP scan</li></ol></div><div class="detail"><strong>Response excerpt</strong><code>Dangerous MCP tool capabilities detected: run_shell: command-exec.</code></div></div></article></div></section><section><h2>Tool Misuse Findings</h2><p class="section-copy">Focused surfacing for Tool Misuse findings.</p><div class="grid"><article class="finding-card vulnerable"><div class="eyebrow"><span class="chip status-vulnerable">vulnerable</span><span class="chip">Tool Misuse</span><span class="chip">Openclaw</span><span class="chip">severity high</span></div><div class="finding-title"><div><h3>OpenClaw Structured Shell Escalation</h3><div class="muted"><code>tm-openclaw-structured-001</code></div></div></div><div class="finding-body"><div class="detail"><strong>Evidence summary</strong>shell.exec pairs with slack_webhook</div><div class="detail"><strong>Why it matters</strong>Tool chains can execute and exfiltrate in one hop.</div><div class="detail"><strong>Recommended action</strong>Split dangerous capabilities.</div><div class="finding-meta"><div class="detail"><strong>Attack surface</strong>runtime</div><div class="detail"><strong>Tool</strong>n/a</div><div class="detail"><strong>Approval signal</strong>n/a</div><div class="detail"><strong>Evidence kind</strong>structured-static</div></div><div class="detail"><strong>Source spans</strong><span class="chip">src/agent.ts:42:9</span><span class="chip">src/notify.ts:11</span></div><div class="detail"><strong>Observed capabilities</strong><span class="chip">command-exec</span><span class="chip">network-egress</span></div><div class="detail"><strong>Mitigation tags</strong><span class="chip">approval-gating</span><span class="chip">egress-controls</span></div><div class="detail"><strong>Repro steps</strong><ol class="list"><li>Inspect src/agent.ts for shell.exec.</li><li>Inspect src/notify.ts for slack_webhook.</li></ol></div><div class="detail"><strong>Response excerpt</strong><code>shell.exec and slack_webhook are chained together</code></div></div></article></div></section><section><h2>Approval Bypass Findings</h2><p class="section-copy">Focused surfacing for Approval Bypass findings.</p><div class="grid"><article class="finding-card vulnerable"><div class="eyebrow"><span class="chip status-vulnerable">vulnerable</span><span class="chip">Approval Bypass</span><span class="chip">Openclaw</span><span class="chip">severity medium</span></div><div class="finding-title"><div><h3>Approval Never Policy</h3><div class="muted"><code>ab-openclaw-001</code></div></div></div><div class="finding-body"><div class="detail"><strong>Evidence summary</strong>approval_policy is set to never</div><div class="detail"><strong>Why it matters</strong>No approval means no human checkpoint.</div><div class="detail"><strong>Recommended action</strong>Require explicit approval for dangerous actions.</div><div class="finding-meta"><div class="detail"><strong>Attack surface</strong>n/a</div><div class="detail"><strong>Tool</strong>n/a</div><div class="detail"><strong>Approval signal</strong>n/a</div><div class="detail"><strong>Evidence kind</strong>n/a</div></div><div class="detail"><strong>Source spans</strong><span class="empty">No source spans</span></div><div class="detail"><strong>Observed capabilities</strong><span class="empty">No capability metadata</span></div><div class="detail"><strong>Mitigation tags</strong><span class="empty">No mitigation tags</span></div><div class="detail"><strong>Repro steps</strong><div class="empty">No repro steps captured.</div></div><div class="detail"><strong>Response excerpt</strong><code>approval_policy = never</code></div></div></article></div></section>
+    <section>
+      <h2>Detailed Findings</h2>
+      <p class="section-copy">Full vector-by-vector results with evidence summaries, excerpts, and execution timing.</p>
+      <div class="table-wrap"><table>
+  <thead>
+    <tr>
+      <th>Vector ID</th>
+      <th>Name</th>
+      <th>Severity</th>
+      <th>Status</th>
+      <th>Confidence</th>
+      <th>Evidence</th>
+      <th>Duration</th>
+      <th>Recommendation</th>
+      <th>Response Excerpt</th>
+    </tr>
+  </thead>
+  <tbody><tr><td><code>mcp-tool-001</code></td><td>Dangerous Capability Exposure<div class="muted">Mcp Security / Tools</div></td><td>high</td><td><span class="chip status-vulnerable">vulnerable</span></td><td>n/a</td><td>run_shell exposes command-exec</td><td>11 ms</td><td>Require approval gating.</td><td><code>Dangerous MCP tool capabilities detected: run_shell: command-exec.</code></td></tr><tr><td><code>tm-openclaw-structured-001</code></td><td>OpenClaw Structured Shell Escalation<div class="muted">Tool Misuse / Openclaw</div></td><td>high</td><td><span class="chip status-vulnerable">vulnerable</span></td><td>n/a</td><td>shell.exec pairs with slack_webhook</td><td>9 ms</td><td>Split dangerous capabilities.</td><td><code>shell.exec and slack_webhook are chained together</code></td></tr><tr><td><code>ab-openclaw-001</code></td><td>Approval Never Policy<div class="muted">Approval Bypass / Openclaw</div></td><td>medium</td><td><span class="chip status-vulnerable">vulnerable</span></td><td>n/a</td><td>approval_policy is set to never</td><td>8 ms</td><td>Require explicit approval for dangerous actions.</td><td><code>approval_policy = never</code></td></tr></tbody>
+</table></div>
+    </section>
+    <section>
+  <h2>MCP Inventory</h2>
+  <p class="section-copy">Descriptor metadata, capability counts, tool approval posture, and parser warnings for MCP scans.</p>
+  <div class="grid">
+    <div class="card"><div class="label">Server</div><div class="value">danger-demo</div></div>
+    <div class="card"><div class="label">Transport</div><div class="value">http</div></div>
+    <div class="card"><div class="label">Endpoint</div><div class="value">https://sandbox.example/mcp</div></div>
+    <div class="card"><div class="label">Tools</div><div class="value">1</div></div>
+    <div class="card"><div class="label">Approval Required</div><div class="value">0</div></div>
+    <div class="card"><div class="label">Warnings</div><div class="value">0</div></div>
+  </div>
+  <section>
+    <h3>Capability Distribution</h3>
+    <div class="grid"><div class="card"><div class="label">Command Exec</div><div class="value">1</div></div></div>
+  </section>
+  <section>
+    <h3>Tool Inventory</h3>
+    <div class="grid"><article class="card"><div class="finding-title"><div><h3>run_shell</h3><div class="muted"><code>run_shell</code></div></div></div><div class="finding-body"><div class="detail"><strong>Description</strong>Execute shell commands</div><div class="finding-meta"><div class="detail"><strong>Approval</strong>unknown</div><div class="detail"><strong>Capabilities</strong><span class="chip">command-exec (declared, high)</span></div></div><div class="detail"><strong>Uncertainty</strong><span class="empty">none</span></div></div></article></div>
+  </section>
+  <section>
+    <h3>Parse Warnings</h3>
+    <div class="panel"><div class="empty">No parse warnings.</div></div>
+  </section>
+</section>
+  </div>
+</body>
+</html>

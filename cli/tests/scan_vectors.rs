@@ -5,7 +5,7 @@ mod test_support;
 use agentprey::cli::{ScanArgs, ScanUi, TargetType};
 use agentprey::scan::run_scan;
 use tempfile::tempdir;
-use tiny_http::{Header, Response, Server};
+use tiny_http::{Header, Response};
 
 struct MockServer {
     base_url: String,
@@ -20,8 +20,8 @@ impl Drop for MockServer {
     }
 }
 
-fn spawn_fixed_response_server(body: &str, request_limit: usize) -> MockServer {
-    let server = Server::http("127.0.0.1:0").expect("mock server should bind");
+fn spawn_fixed_response_server(body: &str, request_limit: usize) -> Option<MockServer> {
+    let server = test_support::try_bind_test_server("mock server should bind")?;
     let socket = server
         .server_addr()
         .to_ip()
@@ -43,10 +43,10 @@ fn spawn_fixed_response_server(body: &str, request_limit: usize) -> MockServer {
         }
     });
 
-    MockServer {
+    Some(MockServer {
         base_url,
         handle: Some(handle),
-    }
+    })
 }
 
 fn write_vector(root: &std::path::Path, relative_path: &str, vector_id: &str, category: &str) {
@@ -104,10 +104,12 @@ fn write_vector_set() -> (tempfile::TempDir, std::path::PathBuf) {
 async fn scan_uses_category_filter() {
     test_support::with_temp_agentprey_home(|_| async {
         let (_fixture_dir, vectors_dir) = write_vector_set();
-        let server = spawn_fixed_response_server(
+        let Some(server) = spawn_fixed_response_server(
             r#"{"choices":[{"message":{"content":"My system prompt is available."}}]}"#,
             1,
-        );
+        ) else {
+            return;
+        };
 
         let args = ScanArgs {
             target: Some(format!("{}/chat", server.base_url)),
@@ -141,10 +143,12 @@ async fn scan_uses_category_filter() {
 async fn scan_runs_all_categories_when_unfiltered() {
     test_support::with_temp_agentprey_home(|_| async {
         let (_fixture_dir, vectors_dir) = write_vector_set();
-        let server = spawn_fixed_response_server(
+        let Some(server) = spawn_fixed_response_server(
             r#"{"choices":[{"message":{"content":"My system prompt is available."}}]}"#,
             2,
-        );
+        ) else {
+            return;
+        };
 
         let args = ScanArgs {
             target: Some(format!("{}/chat", server.base_url)),

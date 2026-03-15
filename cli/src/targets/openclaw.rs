@@ -20,7 +20,6 @@ const SUPPORTED_EXTENSIONS: &[&str] = &[
 const MISSING_ANY_INDICATOR: &str = "missing_any";
 const SNIPPET_CONTEXT_BYTES: usize = 48;
 const MAX_EVIDENCE_LINES: usize = 3;
-const STRUCTURED_SHELL_EXEC_VECTOR_ID: &str = "tm-openclaw-005";
 
 #[derive(Debug, Clone)]
 pub struct OpenClawTarget {
@@ -119,55 +118,24 @@ impl OpenClawTarget {
         };
 
         let analysis = analyze_response_for_vector(&self.corpus.normalized_text, &vector.detection);
-        if vector.id == STRUCTURED_SHELL_EXEC_VECTOR_ID {
-            if let Some(structured_finding) = self
-                .structured_report
-                .finding(StructuredFindingKind::UnsafeShellExecution)
-            {
-                let evidence_summary = structured_finding
-                    .source_spans
-                    .iter()
-                    .map(format_source_span)
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                let response = format!(
-                    "structured openclaw analysis for '{}' on {} found unapproved shell execution at {}.",
-                    vector.name, self.corpus.display_target, evidence_summary
-                );
-
-                return FindingOutcome::new(FindingOutcomeInput {
+        if let Some(kind) = structured_finding_kind_for_vector_id(&vector.id) {
+            if let Some(structured_finding) = self.structured_report.finding(kind) {
+                return build_structured_finding_outcome(
+                    &self.corpus.display_target,
+                    payload.name,
+                    payload.prompt,
                     rule_id,
                     vector_id,
                     vector_name,
                     category,
                     subcategory,
                     severity,
-                    payload_name: payload.name,
-                    payload_prompt: payload.prompt,
-                    status: FindingStatus::Vulnerable,
-                    status_code: None,
-                    response: maybe_redact(&response, settings.redact_responses),
-                    analysis: None,
-                    duration_ms: vector_started.elapsed().as_millis(),
                     rationale,
-                    evidence_summary,
                     recommendation,
-                })
-                .with_evidence(FindingEvidence {
-                    attack_surface: Some("local-shell-exec".to_string()),
-                    observed_capabilities: structured_finding.observed_capabilities.clone(),
-                    evidence_kind: Some("structured-static".to_string()),
-                    repro_steps: structured_finding
-                        .source_spans
-                        .iter()
-                        .map(|span| format!("Open {} at line {}", span.file, span.line))
-                        .collect(),
-                    mitigation_tags: vec![
-                        "approval-gating".to_string(),
-                        "least-privilege".to_string(),
-                    ],
-                    source_spans: structured_finding.source_spans.clone(),
-                });
+                    vector_started.elapsed().as_millis(),
+                    settings.redact_responses,
+                    structured_finding,
+                );
             }
         }
 
@@ -444,4 +412,84 @@ fn format_source_span(span: &crate::analyzer::SourceSpan) -> String {
         Some(column) => format!("{}:{}:{}", span.file, span.line, column),
         None => format!("{}:{}", span.file, span.line),
     }
+}
+
+fn structured_finding_kind_for_vector_id(vector_id: &str) -> Option<StructuredFindingKind> {
+    match vector_id {
+        "tm-openclaw-005" => Some(StructuredFindingKind::UnsafeShellExecution),
+        "tm-openclaw-006" => Some(StructuredFindingKind::UnsafeFilesystemWrite),
+        "tm-openclaw-007" => Some(StructuredFindingKind::OutboundNetworkEgress),
+        _ => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_structured_finding_outcome(
+    display_target: &str,
+    payload_name: String,
+    payload_prompt: String,
+    rule_id: String,
+    vector_id: String,
+    vector_name: String,
+    category: String,
+    subcategory: String,
+    severity: crate::vectors::model::Severity,
+    rationale: String,
+    recommendation: String,
+    duration_ms: u128,
+    redact_responses: bool,
+    structured_finding: &crate::analyzer::StructuredFinding,
+) -> FindingOutcome {
+    let locations = structured_finding
+        .source_spans
+        .iter()
+        .map(format_source_span)
+        .collect::<Vec<_>>();
+    let evidence_summary = format!(
+        "{} Evidence at {}.",
+        structured_finding.summary,
+        locations.join("; ")
+    );
+    let response = format!(
+        "structured openclaw analysis on {} detected {} without an obvious approval gate at {}.",
+        display_target,
+        structured_finding.kind.capability_label(),
+        locations.join("; ")
+    );
+
+    FindingOutcome::new(FindingOutcomeInput {
+        rule_id,
+        vector_id,
+        vector_name,
+        category,
+        subcategory,
+        severity,
+        payload_name,
+        payload_prompt,
+        status: FindingStatus::Vulnerable,
+        status_code: None,
+        response: maybe_redact(&response, redact_responses),
+        analysis: None,
+        duration_ms,
+        rationale,
+        evidence_summary,
+        recommendation,
+    })
+    .with_evidence(FindingEvidence {
+        attack_surface: Some(structured_finding.kind.attack_surface().to_string()),
+        observed_capabilities: structured_finding.observed_capabilities.clone(),
+        evidence_kind: Some("structured-static".to_string()),
+        repro_steps: structured_finding
+            .source_spans
+            .iter()
+            .map(|span| format!("Inspect {} at line {}", span.file, span.line))
+            .collect(),
+        mitigation_tags: structured_finding
+            .kind
+            .mitigation_tags()
+            .iter()
+            .map(|tag| (*tag).to_string())
+            .collect(),
+        source_spans: structured_finding.source_spans.clone(),
+    })
 }

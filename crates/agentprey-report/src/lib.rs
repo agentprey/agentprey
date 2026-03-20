@@ -3,6 +3,8 @@ pub mod compare_html;
 pub mod compare_json;
 pub mod html;
 pub mod json;
+pub mod runtime_html;
+pub mod runtime_json;
 
 pub mod cli {
     pub use agentprey_core::TargetType;
@@ -25,6 +27,10 @@ pub mod scorer {
     pub use agentprey_core::{Grade, ScoreSummary, SeverityCounts};
 }
 
+pub mod runtime {
+    pub use agentprey_core::{RuntimeEvent, RuntimeExitReason, RuntimeOutcome};
+}
+
 pub mod vectors {
     pub mod model {
         pub use agentprey_core::Severity;
@@ -36,4 +42,6 @@ pub mod output {
     pub use crate::compare_json;
     pub use crate::html;
     pub use crate::json;
+    pub use crate::runtime_html;
+    pub use crate::runtime_json;
 }

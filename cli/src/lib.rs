@@ -8,6 +8,7 @@ pub mod http_target;
 pub mod mcp;
 pub mod output;
 pub mod redaction;
+pub mod runtime;
 pub mod scan;
 pub mod scorer;
 pub mod targets;

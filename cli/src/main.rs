@@ -22,6 +22,7 @@ use agentprey::{
     output::html::write_scan_html,
     output::json::write_scan_json,
     output::{compare_html::write_compare_html, compare_json::write_compare_json},
+    runtime::run_runtime_command,
     scan::{
         count_vectors_for_settings, resolve_scan_settings, run_scan_with_settings_with_reporter,
         FindingOutcome, FindingStatus, ResolvedScanSettings, ScanOutcome, ScanSettingsInput,
@@ -143,6 +144,7 @@ async fn main() -> ExitCode {
         }
         Commands::Center(args) => run_center(args.as_ref()).await,
         Commands::Compare(args) => run_compare(&args),
+        Commands::Run(args) => run_runtime_command(&args).await,
         Commands::Vectors(args) => match args.command {
             VectorsCommands::List(list_args) => match render_vectors_list(&list_args) {
                 Ok(()) => ExitCode::from(0),

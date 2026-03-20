@@ -4,9 +4,9 @@ AgentPrey now builds as a small Cargo workspace with the current CLI package kep
 
 - `agentprey-core`: shared scan/result types, score model, MCP metadata types, and narrow cross-crate traits.
 - `agentprey-vectors`: vector model, parser, validator, loader, catalog, storage, and built-in catalog embedding.
-- `agentprey-report`: JSON/HTML report generation plus compare artifact parsing and rendering.
+- `agentprey-report`: JSON/HTML report generation plus compare and runtime artifact rendering.
 - `agentprey-analyzer`: heuristic detection plus structured OpenClaw analysis for supported source languages.
-- `agentprey-sandbox`: Linux-first runtime execution prototype with isolated tempdirs, timeout handling, and normalized runtime events.
+- `agentprey-sandbox`: Linux-first runtime execution with isolated tempdirs, workspace-copy modes, timeout handling, and normalized runtime events.
 - `cli/`: command parsing, config/auth/cloud flows, target execution orchestration, MCP scan runtime, and the TUI.
 
 ## Current execution flow
@@ -17,28 +17,29 @@ AgentPrey now builds as a small Cargo workspace with the current CLI package kep
 4. OpenClaw scans now have two analysis lanes:
    - structured static analysis from `agentprey-analyzer` for supported TypeScript and Python code
    - heuristic corpus scanning as the fallback for current vectors and unsupported files
-5. Findings normalize into `agentprey-core` types and render through `agentprey-report`.
+5. Findings and runtime outcomes normalize into `agentprey-core` types and render through `agentprey-report`.
 
 ## Crate boundaries
 
 - New structured analyzers belong in `agentprey-analyzer`. Detection logic, rule kinds, and language-specific source-span extraction live there, not in the report crate or the CLI.
-- Artifact schema and rendering changes belong in `agentprey-report`. JSON/HTML output shape, compare artifact parsing, and golden fixture expectations should stay concentrated there.
-- Runtime sandbox work belongs in `agentprey-sandbox`. Isolation, tempdir lifecycle, timeout enforcement, and normalized runtime events should land there before any future CLI command surface widens.
-- Shared result contracts belong in `agentprey-core`. Cross-crate finding types, MCP metadata, scoring, and future execution/policy traits should remain the seam between analyzers, runtimes, and presentation.
+- Artifact schema and rendering changes belong in `agentprey-report`. Scan, compare, and runtime JSON/HTML output shape plus golden fixture expectations should stay concentrated there.
+- Runtime sandbox work belongs in `agentprey-sandbox`. Isolation, workspace-copy behavior, timeout enforcement, and normalized runtime events should land there before deeper trace/policy work widens the surface.
+- Shared result contracts belong in `agentprey-core`. Cross-crate finding types, runtime outcome types, MCP metadata, scoring, and future execution/policy traits should remain the seam between analyzers, runtimes, and presentation.
 - CLI wiring belongs in `cli/`. Command parsing, target-specific orchestration, OpenClaw scan assembly, and cloud/auth/config flows should use the focused crates instead of re-implementing their logic.
 
 ## Artifact compatibility
 
 - The public CLI surface stays stable while the workspace split lands.
-- Artifact compatibility stays on `agentprey.scan.v1`.
+- Scan artifact compatibility stays on `agentprey.scan.v1`.
+- Runtime execution uses a dedicated artifact schema, `agentprey.runtime.v1`.
 - New artifact fields must be additive-only so downstream consumers can keep parsing older required keys without breakage.
 - Renderer updates should preserve current report structure unless a deterministic correctness bug requires a narrow fix.
 
 ## Runtime and policy seams
 
-- Linux-first runtime work lives in `agentprey-sandbox`; it does not change the released CLI surface until the runtime command model is ready.
+- Linux-first runtime work lives in `agentprey-sandbox`, with `agentprey run` as the first user-facing runtime entrypoint.
 - `RuntimeExecutor`, `TraceCollector`, and `PolicyEvaluator` are defined in `agentprey-core` as future seams for runtime, trace, and policy crates.
-- Future runtime and policy crates should plug in beside the existing workspace crates, with the CLI orchestrating them and `agentprey-report` consuming only normalized findings and events.
+- Future runtime and policy crates should plug in beside the existing workspace crates, with the CLI orchestrating them and `agentprey-report` consuming only normalized findings and runtime events.
 
 ## Adding an OpenClaw structured rule
 
@@ -50,5 +51,5 @@ AgentPrey now builds as a small Cargo workspace with the current CLI package kep
 ## Near-term direction
 
 - Expand structured OpenClaw analysis beyond shell execution to filesystem, network, and approval-gate flows.
-- Grow `agentprey-sandbox` from prototype supervision into enforced Linux isolation.
+- Grow `agentprey-sandbox` from first-slice command execution into deeper Linux isolation, tracing, and policy enforcement.
 - Keep compare/report behavior stable while new additive evidence such as `source_spans` and runtime events land.

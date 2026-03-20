@@ -1,4 +1,7 @@
-use std::{fmt, path::Path};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Result;
 use clap::ValueEnum;
@@ -175,6 +178,44 @@ impl FindingOutcome {
         self.capabilities = capabilities;
         self.approval_sensitive = approval_sensitive;
         self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeExitReason {
+    Completed,
+    Timeout,
+    SpawnError,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RuntimeEvent {
+    SpawnedProcess { command: String, pid: u32 },
+    Timeout { duration_ms: u128 },
+    Exit { success: bool, code: Option<i32> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeOutcome {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_cwd: Option<PathBuf>,
+    pub sandbox_cwd: PathBuf,
+    pub duration_ms: u128,
+    pub exit_reason: RuntimeExitReason,
+    pub exit_code: Option<i32>,
+    pub timed_out: bool,
+    pub stdout: String,
+    pub stderr: String,
+    pub policy_name: String,
+    pub invocation: String,
+    pub events: Vec<RuntimeEvent>,
+}
+
+impl RuntimeOutcome {
+    pub fn completed_successfully(&self) -> bool {
+        self.exit_reason == RuntimeExitReason::Completed && self.exit_code == Some(0)
     }
 }
 

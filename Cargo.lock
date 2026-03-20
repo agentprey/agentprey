@@ -70,6 +70,7 @@ dependencies = [
 name = "agentprey-sandbox"
 version = "0.5.0"
 dependencies = [
+ "agentprey-core",
  "anyhow",
  "libc",
  "serde",

@@ -1,13 +1,14 @@
 # agentprey
 
-`agentprey` is a developer-first security scanner for AI agents.
+`agentprey` is a developer-first security scanner and runtime sandbox for AI agents.
 
 This repository contains the current AgentPrey CLI:
 
-- Rust CLI with `scan`, `init`, `auth`, and `vectors` commands
+- Rust CLI with `scan`, `run`, `init`, `auth`, and `vectors` commands
 - HTTP endpoint scans with YAML-defined prompt-injection vectors
 - MCP descriptor scans with `--type mcp`
 - Local-path OpenClaw scans with `--type openclaw`
+- Linux-first local runtime execution with `agentprey run`
 - Initial OpenClaw-focused `tool-misuse` coverage for dangerous tool + egress combinations and unsafe fallback prompt guidance
 - Plain terminal and `--ui tui` scan output modes
 - Interactive control center with `agentprey center`
@@ -16,6 +17,17 @@ This repository contains the current AgentPrey CLI:
 - Config + CLI merged scan settings (CLI flags override config)
 - Retry/backoff, rate limiting, bounded concurrency, and response redaction
 - Stable exit codes for CI and release gating
+
+## Internal planning notes
+
+Internal planning and execution notes should not be authored in this repository.
+
+Use the Obsidian vault as the source of truth:
+
+`/home/senku/Documents/Obsidian Vault/10 Projects/AgentPrey/03 Execution`
+
+Keep `docs/plans/` limited to sanitized, public-safe exports only when a plan needs
+to live in the repo for implementation or sharing.
 
 ## Install and verify
 
@@ -117,6 +129,33 @@ Current OpenClaw coverage includes:
 - outbound exfiltration channel checks
 - remote MCP reference checks
 - initial `tool-misuse` findings for dangerous tool + egress combinations and unsafe fallback prompt guidance
+
+### Runtime sandbox execution
+
+Run a local command inside the Linux-first runtime sandbox:
+
+```bash
+agentprey run \
+  --json-out ./runtime.json \
+  --html-out ./runtime.html \
+  -- bash -lc 'echo hello from sandbox'
+```
+
+To execute against a copied project workspace without mutating the source tree:
+
+```bash
+agentprey run \
+  --policy read-only-workspace \
+  --cwd ./path/to/openclaw-project \
+  -- bash -lc 'ls -la'
+```
+
+Runtime notes:
+
+- `agentprey run` is Linux-first.
+- `read-only-workspace` copies the source directory into the sandbox and removes write bits inside the copied workspace.
+- Runtime artifacts use a dedicated schema: `agentprey.runtime.v1`.
+- Deep runtime tracing and network-isolation policy are not part of this first runtime slice.
 
 ### MCP descriptor scan
 

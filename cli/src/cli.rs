@@ -14,6 +14,7 @@ use std::path::PathBuf;
   agentprey compare --baseline ./baseline.json --candidate ./candidate.json --json-out ./compare.json
   agentprey center --target https://my-agent.com/api
   agentprey scan --type openclaw --target ./some-openclaw-project
+  agentprey run --policy read-only-workspace --cwd ./some-openclaw-project -- bash -lc 'ls -la'
   agentprey scan --target https://my-agent.com/api --request-template '{"input": "{{payload}}"}'
   agentprey auth activate --key <your_api_key>
   agentprey vectors sync --pro"#
@@ -39,6 +40,9 @@ pub enum Commands {
 
     /// Compare two scan artifacts and summarize score and finding deltas
     Compare(CompareArgs),
+
+    /// Run a local command inside the Linux-first runtime sandbox
+    Run(RunArgs),
 
     /// List, inspect, and sync attack vectors. Use 'vectors list' to see available vectors, 'vectors sync --pro' to download Pro vectors
     Vectors(VectorsArgs),
@@ -182,6 +186,45 @@ pub struct CompareArgs {
     /// Optional path for writing compare HTML output
     #[arg(long)]
     pub html_out: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum RunPolicy {
+    Default,
+    #[value(name = "read-only-workspace")]
+    ReadOnlyWorkspace,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct RunArgs {
+    /// Optional source working directory to copy into the sandbox
+    #[arg(long)]
+    pub cwd: Option<PathBuf>,
+
+    /// Runtime sandbox policy preset
+    #[arg(long, value_enum, default_value_t = RunPolicy::Default)]
+    pub policy: RunPolicy,
+
+    /// Runtime timeout in seconds
+    #[arg(long)]
+    pub timeout_seconds: Option<u64>,
+
+    /// Optional path for writing runtime JSON output
+    #[arg(long)]
+    pub json_out: Option<PathBuf>,
+
+    /// Optional path for writing runtime HTML output
+    #[arg(long)]
+    pub html_out: Option<PathBuf>,
+
+    /// Command to execute inside the sandbox, passed after `--`
+    #[arg(
+        required = true,
+        num_args = 1..,
+        last = true,
+        allow_hyphen_values = true
+    )]
+    pub command: Vec<String>,
 }
 
 #[derive(Debug, Clone, Args)]

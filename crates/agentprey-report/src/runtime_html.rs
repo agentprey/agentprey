@@ -101,7 +101,7 @@ pub fn render_runtime_html(outcome: &RuntimeOutcome) -> String {
         escape_html(&outcome.policy_name),
         status_class(outcome.exit_reason, outcome.exit_code),
         status_label(outcome.exit_reason, outcome.exit_code),
-        escape_html(&format_exit_reason(outcome.exit_reason)),
+        escape_html(format_exit_reason(outcome.exit_reason)),
         outcome
             .exit_code
             .map(|code| code.to_string())
